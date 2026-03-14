@@ -313,6 +313,22 @@ async def send_panel():
 
     await channel.send(embed=embed, view=AppealPanel())
 
+@bot.event
+async def on_member_ban(guild, user):
+
+    if guild.id != MAIN_GUILD_ID:
+        return
+
+    try:
+        await user.send(
+            "You have been banned in the **RoomMates Discord Server**.\n\n"
+            "If you believe this was a mistake you may appeal in the appeal server:\n"
+            "https://discord.gg/vHYxFAZadS"
+        )
+    except:
+        pass
+
+
 
 # ---------------- READY ---------------- #
 
