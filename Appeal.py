@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands, tasks
-from discord.ui import View, Button, Modal, TextInput
+from discord.ui import View, Modal, TextInput
 from discord import app_commands
 import sqlite3
 import os
@@ -34,16 +34,17 @@ STREAK_ROLES = {
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# DATABASE
+# ---------------- DATABASE ----------------
+
 db = sqlite3.connect("database.db")
 cursor = db.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS streaks(
 user_id INTEGER PRIMARY KEY,
-messages INTEGER,
+message_count INTEGER,
 streak INTEGER,
-last_time TEXT
+last_streak_time TEXT
 )
 """)
 
@@ -59,13 +60,12 @@ async def on_member_ban(guild,user):
 
     try:
         await user.send(
-        "You have been banned in the **RoomMates discord server**.\n\n"
-        "Appeal here:\n"
+        "You have been banned in the **RoomMates discord server**.\n"
+        "Appeal in the Appeal Server:\n"
         "https://discord.gg/vHYxFAZadS"
         )
     except:
         pass
-
 
 # ---------------- BAN ROLE SYNC ----------------
 
@@ -84,10 +84,16 @@ async def update_roles(member):
         banned = False
 
     if banned:
-        await member.add_roles(banned_role)
-    else:
-        await member.add_roles(not_banned_role)
+        if banned_role not in member.roles:
+            await member.add_roles(banned_role)
+        if not_banned_role in member.roles:
+            await member.remove_roles(not_banned_role)
 
+    else:
+        if not_banned_role not in member.roles:
+            await member.add_roles(not_banned_role)
+        if banned_role in member.roles:
+            await member.remove_roles(banned_role)
 
 @tasks.loop(minutes=10)
 async def check_bans():
@@ -97,6 +103,11 @@ async def check_bans():
     for member in guild.members:
         await update_roles(member)
 
+@bot.event
+async def on_member_join(member):
+
+    if member.guild.id == APPEAL_GUILD_ID:
+        await update_roles(member)
 
 # ---------------- MESSAGE STREAK SYSTEM ----------------
 
@@ -106,32 +117,50 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    cursor.execute("SELECT * FROM streaks WHERE user_id=?",(message.author.id,))
-    data = cursor.fetchone()
-
     now = datetime.datetime.utcnow()
+
+    cursor.execute(
+    "SELECT message_count, streak, last_streak_time FROM streaks WHERE user_id=?",
+    (message.author.id,)
+    )
+
+    data = cursor.fetchone()
 
     if not data:
         cursor.execute(
         "INSERT INTO streaks VALUES(?,?,?,?)",
-        (message.author.id,0,0,None))
+        (message.author.id,0,0,None)
+        )
         db.commit()
-        data=(message.author.id,0,0,None)
+        data=(0,0,None)
 
-    messages = data[1] + 1
-    streak = data[2]
-    last = data[3]
+    msg_count, streak, last_time = data
+    msg_count += 1
 
-    if messages >= 2:
+    if msg_count >= 2:
 
-        if last:
-            last_time = datetime.datetime.fromisoformat(last)
+        if last_time:
+            last = datetime.datetime.fromisoformat(last_time)
 
-            if (now-last_time).total_seconds() > 86400:
+            # must wait 24 hours before next streak
+            if (now-last).total_seconds() < 86400:
+                msg_count = 0
+
+                cursor.execute(
+                "UPDATE streaks SET message_count=? WHERE user_id=?",
+                (msg_count,message.author.id)
+                )
+                db.commit()
+
+                await bot.process_commands(message)
+                return
+
+            # if missed 24h window → reset
+            if (now-last).total_seconds() > 172800:
                 streak = 0
 
-        messages = 0
         streak += 1
+        msg_count = 0
 
         guild = message.guild
         member = guild.get_member(message.author.id)
@@ -146,20 +175,21 @@ async def on_message(message):
 
         for day,role_id in STREAK_ROLES.items():
 
-            role = guild.get_role(role_id)
+            role=guild.get_role(role_id)
 
-            if streak >= day:
-                if role not in member.roles:
-                    await member.add_roles(role)
+            if streak >= day and role not in member.roles:
+                await member.add_roles(role)
+
+        last_time = now.isoformat()
 
     cursor.execute(
-    "UPDATE streaks SET messages=?,streak=?,last_time=? WHERE user_id=?",
-    (messages,streak,now.isoformat(),message.author.id))
+    "UPDATE streaks SET message_count=?,streak=?,last_streak_time=? WHERE user_id=?",
+    (msg_count,streak,last_time,message.author.id)
+    )
 
     db.commit()
 
     await bot.process_commands(message)
-
 
 # ---------------- STREAK RESET CHECKER ----------------
 
@@ -168,19 +198,16 @@ async def streak_reset_checker():
 
     guild = bot.get_guild(MAIN_GUILD_ID)
 
-    cursor.execute("SELECT * FROM streaks")
+    cursor.execute("SELECT user_id,last_streak_time FROM streaks")
 
-    for row in cursor.fetchall():
-
-        user_id=row[0]
-        last=row[3]
+    for user_id,last in cursor.fetchall():
 
         if not last:
             continue
 
         last_time=datetime.datetime.fromisoformat(last)
 
-        if (datetime.datetime.utcnow()-last_time).total_seconds() > 86400:
+        if (datetime.datetime.utcnow()-last_time).total_seconds()>172800:
 
             member=guild.get_member(user_id)
 
@@ -199,19 +226,22 @@ async def streak_reset_checker():
                 )
 
             cursor.execute(
-            "UPDATE streaks SET streak=0 WHERE user_id=?",(user_id,))
+            "UPDATE streaks SET streak=0 WHERE user_id=?",
+            (user_id,)
+            )
 
     db.commit()
 
-
-# ---------------- CHECK STREAK IMAGE ----------------
+# ---------------- CHECK STREAK ----------------
 
 @bot.tree.command(name="checkstreak")
 async def checkstreak(interaction:discord.Interaction):
 
     cursor.execute(
     "SELECT streak FROM streaks WHERE user_id=?",
-    (interaction.user.id,))
+    (interaction.user.id,)
+    )
+
     data=cursor.fetchone()
 
     streak=0
@@ -224,23 +254,24 @@ async def checkstreak(interaction:discord.Interaction):
 
     font=ImageFont.truetype("arial.ttf",120)
 
-    draw.text((430,210),str(streak),fill=(0,140,255),font=font)
+    draw.text((420,200),str(streak),fill=(0,120,255),font=font)
 
-    img.save("result.png")
+    output="streak_result.png"
 
-    file=discord.File("result.png")
+    img.save(output)
+
+    file=discord.File(output)
 
     embed=discord.Embed(
     title=f"{interaction.user.name}'s Chat Streak"
     )
 
-    embed.set_image(url="attachment://result.png")
+    embed.set_image(url="attachment://streak_result.png")
 
     await interaction.response.send_message(
     embed=embed,
     file=file
     )
-
 
 # ---------------- APPEAL MODAL ----------------
 
@@ -269,15 +300,13 @@ class AppealModal(Modal):
         except:
             reason="Unknown"
 
-        embed=discord.Embed(
-        title="New Ban Appeal"
-        )
+        embed=discord.Embed(title="New Ban Appeal")
 
         embed.add_field(name="User",value=str(interaction.user))
         embed.add_field(name="Username",value=self.username.value)
         embed.add_field(name="Ban Reason",value=reason)
-        embed.add_field(name="Justified?",value=self.justified.value)
-        embed.add_field(name="Why Unban?",value=self.reason.value)
+        embed.add_field(name="Justified",value=self.justified.value)
+        embed.add_field(name="Why Unban",value=self.reason.value)
 
         await review.send(embed=embed,view=ReviewButtons(interaction.user.id))
 
@@ -285,7 +314,6 @@ class AppealModal(Modal):
         "Appeal submitted.",
         ephemeral=True
         )
-
 
 # ---------------- STAFF BUTTONS ----------------
 
@@ -321,6 +349,7 @@ class ReviewButtons(View):
         )
 
         embed=interaction.message.embeds[0]
+
         embed.add_field(
         name="Result",
         value=f"Accepted by {interaction.user.mention}"
@@ -332,7 +361,6 @@ class ReviewButtons(View):
         "Appeal accepted.",
         ephemeral=True
         )
-
 
     @discord.ui.button(label="Deny",style=discord.ButtonStyle.red)
     async def deny(self,interaction,button):
@@ -351,7 +379,6 @@ class ReviewButtons(View):
         ephemeral=True
         )
 
-
 # ---------------- APPEAL PANEL ----------------
 
 class AppealPanel(View):
@@ -359,8 +386,7 @@ class AppealPanel(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Appeal Here 🔨",
-    style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Appeal Here 🔨",style=discord.ButtonStyle.green)
     async def appeal(self,interaction,button):
 
         role=interaction.guild.get_role(BANNED_ROLE_ID)
@@ -375,18 +401,14 @@ class AppealPanel(View):
 
         await interaction.response.send_modal(AppealModal())
 
-
-    @discord.ui.button(label="Ban Case",
-    style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="Ban Case",style=discord.ButtonStyle.grey)
     async def case(self,interaction,button):
 
         main=bot.get_guild(MAIN_GUILD_ID)
 
         try:
             ban=await main.fetch_ban(interaction.user)
-
             reason=ban.reason
-
         except:
             reason="Unknown"
 
@@ -399,7 +421,6 @@ class AppealPanel(View):
         embed=embed,
         ephemeral=True
         )
-
 
 # ---------------- PANEL AUTO SEND ----------------
 
@@ -415,16 +436,15 @@ async def send_panel():
     embed=discord.Embed(
     title="RoomMates VC Ban Appeals",
     description=(
-    "Welcome to **RoomMates VC Ban Appeals**.\n\n"
-    "**How to appeal:**\n"
-    "Click **APPEAL HERE** and fill out the form.\n\n"
-    "**What happens after:**\n"
-    "If your appeal is accepted you will be pinged.\n"
-    "If it is not accepted within **7 days**, it is declined but you may appeal again."
+    "Welcome to RoomMates VC Ban Appeals\n\n"
+    "How to appeal:\n"
+    "Click **APPEAL HERE** then fill out the form.\n\n"
+    "What happens after:\n"
+    "If accepted you will be pinged.\n"
+    "If 7 days pass without acceptance the appeal is declined."
     ))
 
     await channel.send(embed=embed,view=AppealPanel())
-
 
 # ---------------- READY ----------------
 
@@ -435,6 +455,9 @@ async def on_ready():
 
     check_bans.start()
     streak_reset_checker.start()
+
+    bot.add_view(AppealPanel())
+    bot.add_view(ReviewButtons(0))
 
     await send_panel()
 
