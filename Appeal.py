@@ -347,45 +347,53 @@ class ReviewButtons(View):
 
 # ---------------- APPEAL PANEL ----------------
 
-class AppealPanel(View):
+class AppealPanel(discord.ui.View):
 
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Appeal Here 🔨",style=discord.ButtonStyle.green)
-    async def appeal(self,interaction,button):
+    @discord.ui.button(
+        label="Appeal Here 🔨",
+        style=discord.ButtonStyle.green,
+        custom_id="appeal_button"
+    )
+    async def appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        role=interaction.guild.get_role(BANNED_ROLE)
+        role = interaction.guild.get_role(BANNED_ROLE)
 
         if role not in interaction.user.roles:
 
             await interaction.response.send_message(
-            "You cannot appeal because you are not banned.",
-            ephemeral=True)
-
+                "You cannot appeal because you are not banned.",
+                ephemeral=True
+            )
             return
 
         await interaction.response.send_modal(AppealModal())
 
-    @discord.ui.button(label="Ban Case",style=discord.ButtonStyle.grey)
-    async def case(self,interaction,button):
+    @discord.ui.button(
+        label="Ban Case",
+        style=discord.ButtonStyle.gray,
+        custom_id="ban_case_button"
+    )
+    async def case(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        main=bot.get_guild(MAIN_GUILD_ID)
+        main = bot.get_guild(MAIN_GUILD_ID)
 
         try:
-            ban=await main.fetch_ban(interaction.user)
-            reason=ban.reason
+            ban = await main.fetch_ban(interaction.user)
+            reason = ban.reason
         except:
-            reason="Unknown"
+            reason = "Unknown"
 
-        embed=discord.Embed(
-        title="Your Ban Case",
-        description=f"Reason: {reason}"
+        embed = discord.Embed(
+            title="Your Ban Case",
+            description=f"Reason: {reason}"
         )
 
         await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
+            embed=embed,
+            ephemeral=True
         )
 
 # ---------------- AUTO PANEL ----------------
