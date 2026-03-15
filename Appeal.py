@@ -9,19 +9,18 @@ from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = os.getenv("TOKEN")
 
-# SERVER IDS
-MAIN_GUILD_ID = 1476717006764900372
-APPEAL_GUILD_ID = 1482442062862356573
+# SERVERS
+MAIN_GUILD = 1476717006764900372
+APPEAL_GUILD = 1482442062862356573
 
 # ROLES
 BANNED_ROLE = 1482444637795782919
 NOT_BANNED_ROLE = 1482444680313442345
-
 ACCEPTED_ROLE = 1482444757178388673
 
 # CHANNELS
 PANEL_CHANNEL = 1482443249594400993
-APPEAL_REVIEW_CHANNEL = 1482443249594400996
+APPEAL_REVIEW = 1482443249594400996
 ACCEPT_CHANNEL = 1482442063592161594
 STREAK_CHANNEL = 1476717008010870805
 
@@ -38,7 +37,8 @@ STREAK_ROLES = {
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# DATABASE (persistent for Railway)
+# ---------------- DATABASE ----------------
+
 db = sqlite3.connect("database.db")
 cursor = db.cursor()
 
@@ -51,20 +51,27 @@ last_time TEXT
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS panel(
+id INTEGER PRIMARY KEY,
+message_id INTEGER
+)
+""")
+
 db.commit()
 
 # ---------------- BAN DM ----------------
 
 @bot.event
-async def on_member_ban(guild, user):
+async def on_member_ban(guild,user):
 
-    if guild.id != MAIN_GUILD_ID:
+    if guild.id != MAIN_GUILD:
         return
 
     try:
         await user.send(
         "You have been banned in the **RoomMates Discord Server**.\n\n"
-        "Appeal in the appeal server:\n"
+        "Appeal here:\n"
         "https://discord.gg/vHYxFAZadS"
         )
     except:
@@ -74,8 +81,8 @@ async def on_member_ban(guild, user):
 
 async def update_roles(member):
 
-    main = bot.get_guild(MAIN_GUILD_ID)
-    appeal = bot.get_guild(APPEAL_GUILD_ID)
+    main = bot.get_guild(MAIN_GUILD)
+    appeal = bot.get_guild(APPEAL_GUILD)
 
     banned_role = appeal.get_role(BANNED_ROLE)
     not_banned_role = appeal.get_role(NOT_BANNED_ROLE)
@@ -103,9 +110,9 @@ async def update_roles(member):
             await member.remove_roles(banned_role)
 
 @tasks.loop(minutes=10)
-async def check_bans():
+async def ban_sync():
 
-    guild = bot.get_guild(APPEAL_GUILD_ID)
+    guild = bot.get_guild(APPEAL_GUILD)
 
     for member in guild.members:
         await update_roles(member)
@@ -113,10 +120,10 @@ async def check_bans():
 @bot.event
 async def on_member_join(member):
 
-    if member.guild.id == APPEAL_GUILD_ID:
+    if member.guild.id == APPEAL_GUILD:
         await update_roles(member)
 
-# ---------------- STREAK SYSTEM ----------------
+# ---------------- MESSAGE STREAK ----------------
 
 @bot.event
 async def on_message(message):
@@ -124,10 +131,10 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
 
     cursor.execute(
-    "SELECT messages, streak, last_time FROM streaks WHERE user_id=?",
+    "SELECT messages,streak,last_time FROM streaks WHERE user_id=?",
     (message.author.id,)
     )
 
@@ -151,10 +158,10 @@ async def on_message(message):
 
         if last_time:
 
-            last=datetime.datetime.fromisoformat(last_time)
+            last = datetime.datetime.fromisoformat(last_time)
 
             if (now-last).total_seconds() < 86400:
-                messages=0
+                messages = 0
 
                 cursor.execute(
                 "UPDATE streaks SET messages=? WHERE user_id=?",
@@ -166,7 +173,7 @@ async def on_message(message):
                 return
 
             if (now-last).total_seconds() > 172800:
-                streak=0
+                streak = 0
 
         streak += 1
         messages = 0
@@ -179,13 +186,13 @@ async def on_message(message):
 
         await channel.send(
         f"{member.mention}, you've accumulated a chat streak!\n"
-        f"Come back tomorrow to carry on your streak.\n"
+        f"Come back tomorrow to continue your streak.\n"
         f"Streak Count: {streak}"
         )
 
-        for day, role_id in STREAK_ROLES.items():
+        for day,role_id in STREAK_ROLES.items():
 
-            role=guild.get_role(role_id)
+            role = guild.get_role(role_id)
 
             if streak >= day and role not in member.roles:
                 await member.add_roles(role)
@@ -199,7 +206,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ---------------- CHECK STREAK ----------------
+# ---------------- CHECK STREAK COMMAND ----------------
 
 @bot.tree.command(name="checkstreak")
 async def checkstreak(interaction:discord.Interaction):
@@ -244,12 +251,15 @@ async def checkstreak(interaction:discord.Interaction):
 class AppealModal(Modal):
 
     def __init__(self):
+
         super().__init__(title="RoomMates Ban Appeal")
 
-        self.username=TextInput(label="What's your username?")
-        self.justified=TextInput(label="Do you think your ban was justified?")
-        self.reason=TextInput(label="Why should you be unbanned?",
-        style=discord.TextStyle.paragraph)
+        self.username = TextInput(label="What's your username?")
+        self.justified = TextInput(label="Do you think your ban was justified?")
+        self.reason = TextInput(
+        label="Why should you be unbanned?",
+        style=discord.TextStyle.paragraph
+        )
 
         self.add_item(self.username)
         self.add_item(self.justified)
@@ -257,16 +267,16 @@ class AppealModal(Modal):
 
     async def on_submit(self,interaction):
 
-        review=bot.get_channel(APPEAL_REVIEW_CHANNEL)
-        main=bot.get_guild(MAIN_GUILD_ID)
+        review = bot.get_channel(APPEAL_REVIEW)
+        main = bot.get_guild(MAIN_GUILD)
 
         try:
-            ban=await main.fetch_ban(interaction.user)
-            reason=ban.reason
+            ban = await main.fetch_ban(interaction.user)
+            reason = ban.reason
         except:
-            reason="Unknown"
+            reason = "Unknown"
 
-        embed=discord.Embed(title="New Ban Appeal")
+        embed = discord.Embed(title="New Ban Appeal")
 
         embed.add_field(name="User",value=str(interaction.user))
         embed.add_field(name="Username",value=self.username.value)
@@ -274,14 +284,17 @@ class AppealModal(Modal):
         embed.add_field(name="Justified",value=self.justified.value)
         embed.add_field(name="Why Unban",value=self.reason.value)
 
-        await review.send(embed=embed,view=ReviewButtons(interaction.user.id))
+        await review.send(
+        embed=embed,
+        view=ReviewButtons(interaction.user.id)
+        )
 
         await interaction.response.send_message(
         "Appeal submitted.",
         ephemeral=True
         )
 
-# ---------------- STAFF BUTTONS ----------------
+# ---------------- STAFF REVIEW BUTTONS ----------------
 
 class ReviewButtons(View):
 
@@ -289,32 +302,32 @@ class ReviewButtons(View):
         super().__init__(timeout=None)
         self.user_id=user_id
 
-    @discord.ui.button(label="Accept",style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Accept",style=discord.ButtonStyle.green,custom_id="accept_appeal")
     async def accept(self,interaction,button):
 
-        main=bot.get_guild(MAIN_GUILD_ID)
-        appeal=bot.get_guild(APPEAL_GUILD_ID)
+        main = bot.get_guild(MAIN_GUILD)
+        appeal = bot.get_guild(APPEAL_GUILD)
 
-        user=await bot.fetch_user(self.user_id)
+        user = await bot.fetch_user(self.user_id)
 
         try:
             await main.unban(user)
         except:
             pass
 
-        member=appeal.get_member(self.user_id)
+        member = appeal.get_member(self.user_id)
 
         if member:
-            role=appeal.get_role(ACCEPTED_ROLE)
+            role = appeal.get_role(ACCEPTED_ROLE)
             await member.add_roles(role)
 
-        channel=bot.get_channel(ACCEPT_CHANNEL)
+        channel = bot.get_channel(ACCEPT_CHANNEL)
 
         await channel.send(
         f"{user.mention} your appeal has been accepted."
         )
 
-        embed=interaction.message.embeds[0]
+        embed = interaction.message.embeds[0]
 
         embed.add_field(
         name="Result",
@@ -328,10 +341,10 @@ class ReviewButtons(View):
         ephemeral=True
         )
 
-    @discord.ui.button(label="Deny",style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Deny",style=discord.ButtonStyle.red,custom_id="deny_appeal")
     async def deny(self,interaction,button):
 
-        embed=interaction.message.embeds[0]
+        embed = interaction.message.embeds[0]
 
         embed.add_field(
         name="Result",
@@ -347,38 +360,39 @@ class ReviewButtons(View):
 
 # ---------------- APPEAL PANEL ----------------
 
-class AppealPanel(discord.ui.View):
+class AppealPanel(View):
 
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Appeal Here 🔨",
-        style=discord.ButtonStyle.green,
-        custom_id="appeal_button"
+    label="Appeal Here 🔨",
+    style=discord.ButtonStyle.green,
+    custom_id="appeal_button"
     )
-    async def appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def appeal(self,interaction,button):
 
         role = interaction.guild.get_role(BANNED_ROLE)
 
         if role not in interaction.user.roles:
 
             await interaction.response.send_message(
-                "You cannot appeal because you are not banned.",
-                ephemeral=True
+            "You cannot appeal because you are not banned.",
+            ephemeral=True
             )
+
             return
 
         await interaction.response.send_modal(AppealModal())
 
     @discord.ui.button(
-        label="Ban Case",
-        style=discord.ButtonStyle.gray,
-        custom_id="ban_case_button"
+    label="Ban Case",
+    style=discord.ButtonStyle.gray,
+    custom_id="ban_case_button"
     )
-    async def case(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def case(self,interaction,button):
 
-        main = bot.get_guild(MAIN_GUILD_ID)
+        main = bot.get_guild(MAIN_GUILD)
 
         try:
             ban = await main.fetch_ban(interaction.user)
@@ -387,36 +401,50 @@ class AppealPanel(discord.ui.View):
             reason = "Unknown"
 
         embed = discord.Embed(
-            title="Your Ban Case",
-            description=f"Reason: {reason}"
+        title="Your Ban Case",
+        description=f"Reason: {reason}"
         )
 
         await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
+        embed=embed,
+        ephemeral=True
         )
 
-# ---------------- AUTO PANEL ----------------
+# ---------------- PANEL AUTO SEND ----------------
 
-async def send_panel():
+async def ensure_panel():
 
-    channel=bot.get_channel(PANEL_CHANNEL)
+    channel = bot.get_channel(PANEL_CHANNEL)
 
-    async for msg in channel.history(limit=20):
+    cursor.execute("SELECT message_id FROM panel WHERE id=1")
+    data = cursor.fetchone()
 
-        if msg.author == bot.user:
+    if data:
+
+        try:
+            await channel.fetch_message(data[0])
             return
+        except:
+            pass
 
-    embed=discord.Embed(
+    embed = discord.Embed(
     title="RoomMates VC Ban Appeals",
-    description=
+    description=(
     "How to appeal:\n"
-    "Click **APPEAL HERE** then fill out the form.\n\n"
-    "What happens after:\n"
-    "If your appeal hasn't been accepted in 7 days it is declined but you may appeal again."
+    "Click **Appeal Here 🔨** and fill out the form.\n\n"
+    "If your appeal hasn't been accepted in 7 days it is declined."
+    ),
+    color=discord.Color.green()
     )
 
-    await channel.send(embed=embed,view=AppealPanel())
+    msg = await channel.send(embed=embed,view=AppealPanel())
+
+    cursor.execute(
+    "INSERT OR REPLACE INTO panel (id,message_id) VALUES (1,?)",
+    (msg.id,)
+    )
+
+    db.commit()
 
 # ---------------- READY ----------------
 
@@ -425,12 +453,12 @@ async def on_ready():
 
     print("Bot Ready")
 
-    check_bans.start()
+    ban_sync.start()
 
     bot.add_view(AppealPanel())
     bot.add_view(ReviewButtons(0))
 
-    await send_panel()
+    await ensure_panel()
 
     await bot.tree.sync()
 
