@@ -22,6 +22,7 @@ intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
 intents.messages = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -75,13 +76,14 @@ async def on_member_join(member):
         await update_roles(member)
 
 
-# ---------------- AUTO THUMBS UP REACTION ---------------- #
+# ---------------- AUTO THUMBS UP SYSTEM ---------------- #
 
 REACTION_CHANNELS = [
     1482516620730433625,
     1478798153288384624,
     1482514244997091479
 ]
+
 
 @bot.event
 async def on_message(message):
@@ -96,6 +98,26 @@ async def on_message(message):
             pass
 
     await bot.process_commands(message)
+
+
+async def react_to_old_messages():
+
+    await bot.wait_until_ready()
+
+    for channel_id in REACTION_CHANNELS:
+
+        channel = bot.get_channel(channel_id)
+
+        if channel is None:
+            continue
+
+        async for message in channel.history(limit=None):
+
+            try:
+                if not any(str(r.emoji) == "👍" for r in message.reactions):
+                    await message.add_reaction("👍")
+            except:
+                pass
 
 
 # ---------------- APPEAL MODAL ---------------- #
@@ -348,6 +370,8 @@ async def on_ready():
     bot.add_view(AppealPanel())
 
     check_bans.start()
+
+    bot.loop.create_task(react_to_old_messages())
 
     await send_panel()
 
