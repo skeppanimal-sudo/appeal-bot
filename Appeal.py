@@ -3,25 +3,29 @@ from discord.ext import commands, tasks
 from discord.ui import View, Modal, TextInput
 from discord import app_commands
 import sqlite3
-import os
 import datetime
+import os
 from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = os.getenv("TOKEN")
 
+# SERVER IDS
 MAIN_GUILD_ID = 1476717006764900372
 APPEAL_GUILD_ID = 1482442062862356573
 
-BANNED_ROLE_ID = 1482444637795782919
-NOT_BANNED_ROLE_ID = 1482444680313442345
+# ROLES
+BANNED_ROLE = 1482444637795782919
+NOT_BANNED_ROLE = 1482444680313442345
 
-PANEL_CHANNEL_ID = 1482443249594400993
+ACCEPTED_ROLE = 1482444757178388673
+
+# CHANNELS
+PANEL_CHANNEL = 1482443249594400993
 APPEAL_REVIEW_CHANNEL = 1482443249594400996
-ACCEPTED_CHANNEL = 1482442063592161594
-ACCEPTED_ROLE_ID = 1482444757178388673
-
+ACCEPT_CHANNEL = 1482442063592161594
 STREAK_CHANNEL = 1476717008010870805
 
+# STREAK ROLES
 STREAK_ROLES = {
 1:1482749886699929660,
 2:1482749591886762085,
@@ -34,17 +38,16 @@ STREAK_ROLES = {
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- DATABASE ----------------
-
+# DATABASE (persistent for Railway)
 db = sqlite3.connect("database.db")
 cursor = db.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS streaks(
 user_id INTEGER PRIMARY KEY,
-message_count INTEGER,
+messages INTEGER,
 streak INTEGER,
-last_streak_time TEXT
+last_time TEXT
 )
 """)
 
@@ -53,15 +56,15 @@ db.commit()
 # ---------------- BAN DM ----------------
 
 @bot.event
-async def on_member_ban(guild,user):
+async def on_member_ban(guild, user):
 
     if guild.id != MAIN_GUILD_ID:
         return
 
     try:
         await user.send(
-        "You have been banned in the **RoomMates discord server**.\n"
-        "Appeal in the Appeal Server:\n"
+        "You have been banned in the **RoomMates Discord Server**.\n\n"
+        "Appeal in the appeal server:\n"
         "https://discord.gg/vHYxFAZadS"
         )
     except:
@@ -74,8 +77,8 @@ async def update_roles(member):
     main = bot.get_guild(MAIN_GUILD_ID)
     appeal = bot.get_guild(APPEAL_GUILD_ID)
 
-    banned_role = appeal.get_role(BANNED_ROLE_ID)
-    not_banned_role = appeal.get_role(NOT_BANNED_ROLE_ID)
+    banned_role = appeal.get_role(BANNED_ROLE)
+    not_banned_role = appeal.get_role(NOT_BANNED_ROLE)
 
     try:
         await main.fetch_ban(member)
@@ -84,14 +87,18 @@ async def update_roles(member):
         banned = False
 
     if banned:
+
         if banned_role not in member.roles:
             await member.add_roles(banned_role)
+
         if not_banned_role in member.roles:
             await member.remove_roles(not_banned_role)
 
     else:
+
         if not_banned_role not in member.roles:
             await member.add_roles(not_banned_role)
+
         if banned_role in member.roles:
             await member.remove_roles(banned_role)
 
@@ -109,7 +116,7 @@ async def on_member_join(member):
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
 
-# ---------------- MESSAGE STREAK SYSTEM ----------------
+# ---------------- STREAK SYSTEM ----------------
 
 @bot.event
 async def on_message(message):
@@ -120,47 +127,50 @@ async def on_message(message):
     now = datetime.datetime.utcnow()
 
     cursor.execute(
-    "SELECT message_count, streak, last_streak_time FROM streaks WHERE user_id=?",
+    "SELECT messages, streak, last_time FROM streaks WHERE user_id=?",
     (message.author.id,)
     )
 
     data = cursor.fetchone()
 
     if not data:
+
         cursor.execute(
         "INSERT INTO streaks VALUES(?,?,?,?)",
         (message.author.id,0,0,None)
         )
+
         db.commit()
         data=(0,0,None)
 
-    msg_count, streak, last_time = data
-    msg_count += 1
+    messages, streak, last_time = data
 
-    if msg_count >= 2:
+    messages += 1
+
+    if messages >= 2:
 
         if last_time:
-            last = datetime.datetime.fromisoformat(last_time)
 
-            # must wait 24 hours before next streak
+            last=datetime.datetime.fromisoformat(last_time)
+
             if (now-last).total_seconds() < 86400:
-                msg_count = 0
+                messages=0
 
                 cursor.execute(
-                "UPDATE streaks SET message_count=? WHERE user_id=?",
-                (msg_count,message.author.id)
+                "UPDATE streaks SET messages=? WHERE user_id=?",
+                (messages,message.author.id)
                 )
-                db.commit()
 
+                db.commit()
                 await bot.process_commands(message)
                 return
 
-            # if missed 24h window → reset
             if (now-last).total_seconds() > 172800:
-                streak = 0
+                streak=0
 
         streak += 1
-        msg_count = 0
+        messages = 0
+        last_time = now.isoformat()
 
         guild = message.guild
         member = guild.get_member(message.author.id)
@@ -173,64 +183,21 @@ async def on_message(message):
         f"Streak Count: {streak}"
         )
 
-        for day,role_id in STREAK_ROLES.items():
+        for day, role_id in STREAK_ROLES.items():
 
             role=guild.get_role(role_id)
 
             if streak >= day and role not in member.roles:
                 await member.add_roles(role)
 
-        last_time = now.isoformat()
-
     cursor.execute(
-    "UPDATE streaks SET message_count=?,streak=?,last_streak_time=? WHERE user_id=?",
-    (msg_count,streak,last_time,message.author.id)
+    "UPDATE streaks SET messages=?,streak=?,last_time=? WHERE user_id=?",
+    (messages,streak,last_time,message.author.id)
     )
 
     db.commit()
 
     await bot.process_commands(message)
-
-# ---------------- STREAK RESET CHECKER ----------------
-
-@tasks.loop(hours=1)
-async def streak_reset_checker():
-
-    guild = bot.get_guild(MAIN_GUILD_ID)
-
-    cursor.execute("SELECT user_id,last_streak_time FROM streaks")
-
-    for user_id,last in cursor.fetchall():
-
-        if not last:
-            continue
-
-        last_time=datetime.datetime.fromisoformat(last)
-
-        if (datetime.datetime.utcnow()-last_time).total_seconds()>172800:
-
-            member=guild.get_member(user_id)
-
-            if member:
-
-                for role_id in STREAK_ROLES.values():
-                    role=guild.get_role(role_id)
-
-                    if role in member.roles:
-                        await member.remove_roles(role)
-
-                channel=guild.get_channel(STREAK_CHANNEL)
-
-                await channel.send(
-                f"{member.mention}, you've lost your chat streak."
-                )
-
-            cursor.execute(
-            "UPDATE streaks SET streak=0 WHERE user_id=?",
-            (user_id,)
-            )
-
-    db.commit()
 
 # ---------------- CHECK STREAK ----------------
 
@@ -242,31 +209,30 @@ async def checkstreak(interaction:discord.Interaction):
     (interaction.user.id,)
     )
 
-    data=cursor.fetchone()
+    data = cursor.fetchone()
 
-    streak=0
+    streak = 0
+
     if data:
-        streak=data[0]
+        streak = data[0]
 
-    img=Image.open("streak.png").convert("RGBA")
+    img = Image.open("streak.png").convert("RGBA")
 
-    draw=ImageDraw.Draw(img)
+    draw = ImageDraw.Draw(img)
 
-    font=ImageFont.truetype("arial.ttf",120)
+    font = ImageFont.truetype("arial.ttf",120)
 
     draw.text((420,200),str(streak),fill=(0,120,255),font=font)
 
-    output="streak_result.png"
+    img.save("result.png")
 
-    img.save(output)
+    file = discord.File("result.png")
 
-    file=discord.File(output)
-
-    embed=discord.Embed(
+    embed = discord.Embed(
     title=f"{interaction.user.name}'s Chat Streak"
     )
 
-    embed.set_image(url="attachment://streak_result.png")
+    embed.set_image(url="attachment://result.png")
 
     await interaction.response.send_message(
     embed=embed,
@@ -339,10 +305,10 @@ class ReviewButtons(View):
         member=appeal.get_member(self.user_id)
 
         if member:
-            role=appeal.get_role(ACCEPTED_ROLE_ID)
+            role=appeal.get_role(ACCEPTED_ROLE)
             await member.add_roles(role)
 
-        channel=bot.get_channel(ACCEPTED_CHANNEL)
+        channel=bot.get_channel(ACCEPT_CHANNEL)
 
         await channel.send(
         f"{user.mention} your appeal has been accepted."
@@ -389,7 +355,7 @@ class AppealPanel(View):
     @discord.ui.button(label="Appeal Here 🔨",style=discord.ButtonStyle.green)
     async def appeal(self,interaction,button):
 
-        role=interaction.guild.get_role(BANNED_ROLE_ID)
+        role=interaction.guild.get_role(BANNED_ROLE)
 
         if role not in interaction.user.roles:
 
@@ -422,27 +388,25 @@ class AppealPanel(View):
         ephemeral=True
         )
 
-# ---------------- PANEL AUTO SEND ----------------
+# ---------------- AUTO PANEL ----------------
 
 async def send_panel():
 
-    channel=bot.get_channel(PANEL_CHANNEL_ID)
+    channel=bot.get_channel(PANEL_CHANNEL)
 
     async for msg in channel.history(limit=20):
 
-        if msg.author==bot.user:
+        if msg.author == bot.user:
             return
 
     embed=discord.Embed(
     title="RoomMates VC Ban Appeals",
-    description=(
-    "Welcome to RoomMates VC Ban Appeals\n\n"
+    description=
     "How to appeal:\n"
     "Click **APPEAL HERE** then fill out the form.\n\n"
     "What happens after:\n"
-    "If accepted you will be pinged.\n"
-    "If 7 days pass without acceptance the appeal is declined."
-    ))
+    "If your appeal hasn't been accepted in 7 days it is declined but you may appeal again."
+    )
 
     await channel.send(embed=embed,view=AppealPanel())
 
@@ -454,7 +418,6 @@ async def on_ready():
     print("Bot Ready")
 
     check_bans.start()
-    streak_reset_checker.start()
 
     bot.add_view(AppealPanel())
     bot.add_view(ReviewButtons(0))
