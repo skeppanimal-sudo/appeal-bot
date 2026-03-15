@@ -21,6 +21,7 @@ ACCEPTED_ROLE = 1482444757178388673
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
+intents.messages = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -72,6 +73,29 @@ async def on_member_join(member):
 
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
+
+
+# ---------------- AUTO THUMBS UP REACTION ---------------- #
+
+REACTION_CHANNELS = [
+    1482516620730433625,
+    1478798153288384624,
+    1482514244997091479
+]
+
+@bot.event
+async def on_message(message):
+
+    if message.author.bot:
+        return
+
+    if message.channel.id in REACTION_CHANNELS:
+        try:
+            await message.add_reaction("👍")
+        except:
+            pass
+
+    await bot.process_commands(message)
 
 
 # ---------------- APPEAL MODAL ---------------- #
