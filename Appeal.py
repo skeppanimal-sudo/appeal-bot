@@ -376,4 +376,11 @@ async def on_ready():
     await send_panel()
 
 
+# ---------------- GAMELINK COMMAND ---------------- #
+
+@bot.command()
+async def gamelink(ctx):
+    await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
+
+
 bot.run(TOKEN)
