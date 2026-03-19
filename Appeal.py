@@ -182,6 +182,9 @@ class DiscordSupportModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
 
+        # ✅ FIX: defer immediately
+        await interaction.response.defer(ephemeral=True)
+
         embed = discord.Embed(
             title="Discord Support Ticket",
             color=discord.Color.blurple()
@@ -193,20 +196,26 @@ class DiscordSupportModal(Modal):
         embed.add_field(name="What happened?", value=self.q3.value, inline=False)
         embed.add_field(name="Happened in server?", value=self.q4.value, inline=False)
 
-        # ✅ FIX: respond first
-        await interaction.response.send_message("Creating your support ticket...", ephemeral=True)
+        try:
+            msg = await interaction.channel.send(f"Support ticket for {interaction.user.mention}")
 
-        # create message for thread
-        msg = await interaction.channel.send(f"Support ticket for {interaction.user.mention}")
+            thread = await msg.create_thread(
+                name=f"support-{interaction.user.name}"
+            )
 
-        # create private thread properly
-        thread = await msg.create_thread(
-            name=f"support-{interaction.user.name}",
-            type=discord.ChannelType.private_thread
-        )
+            await thread.add_user(interaction.user)
+            await thread.send(embed=embed)
 
-        await thread.add_user(interaction.user)
-        await thread.send(embed=embed)
+            await interaction.followup.send(
+                f"✅ Your support ticket has been created: {thread.mention}",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Error creating ticket: {e}",
+                ephemeral=True
+            )
 
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
