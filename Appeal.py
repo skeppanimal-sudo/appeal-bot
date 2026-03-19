@@ -183,7 +183,7 @@ class DiscordSupportModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
 
         embed = discord.Embed(
-            title="New Discord Support Request",
+            title="Discord Support Ticket",
             color=discord.Color.blurple()
         )
 
@@ -193,9 +193,18 @@ class DiscordSupportModal(Modal):
         embed.add_field(name="What happened?", value=self.q3.value, inline=False)
         embed.add_field(name="Happened in server?", value=self.q4.value, inline=False)
 
-        await interaction.channel.send(embed=embed)
+        thread = await interaction.channel.create_thread(
+            name=f"support-{interaction.user.name}",
+            type=discord.ChannelType.private_thread
+        )
 
-        await interaction.response.send_message("Your support request has been submitted.", ephemeral=True)
+        await thread.add_user(interaction.user)
+        await thread.send(embed=embed)
+
+        await interaction.response.send_message(
+            f"Your support ticket has been created: {thread.mention}",
+            ephemeral=True
+        )
 
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
