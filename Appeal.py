@@ -17,7 +17,7 @@ APPEAL_REVIEW_CHANNEL = 1482443249594400996
 ACCEPTED_CHANNEL = 1482442063592161594
 ACCEPTED_ROLE = 1482444757178388673
 
-SUPPORT_CHANNEL_ID = 1476717007717142735  # ✅ ADDED
+SUPPORT_CHANNEL_ID = 1476717007717142735
 
 
 intents = discord.Intents.default()
@@ -129,19 +129,9 @@ class AppealModal(Modal):
     def __init__(self):
         super().__init__(title="RoomMates Ban Appeal")
 
-        self.username = TextInput(
-            label="What's your username?"
-        )
-
-        self.justified = TextInput(
-            label="Do you think your ban was justified?",
-            style=discord.TextStyle.paragraph
-        )
-
-        self.reason = TextInput(
-            label="Why should you be unbanned?",
-            style=discord.TextStyle.paragraph
-        )
+        self.username = TextInput(label="What's your username?")
+        self.justified = TextInput(label="Do you think your ban was justified?", style=discord.TextStyle.paragraph)
+        self.reason = TextInput(label="Why should you be unbanned?", style=discord.TextStyle.paragraph)
 
         self.add_item(self.username)
         self.add_item(self.justified)
@@ -158,49 +148,54 @@ class AppealModal(Modal):
         except:
             ban_reason = "Unknown"
 
-        embed = discord.Embed(
-            title="New Ban Appeal",
-            color=discord.Color.orange()
-        )
+        embed = discord.Embed(title="New Ban Appeal", color=discord.Color.orange())
 
-        embed.add_field(
-            name="User",
-            value=f"{interaction.user} ({interaction.user.id})",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Username",
-            value=self.username.value,
-            inline=False
-        )
-
-        embed.add_field(
-            name="Ban Reason",
-            value=ban_reason,
-            inline=False
-        )
-
-        embed.add_field(
-            name="Was Ban Justified?",
-            value=self.justified.value,
-            inline=False
-        )
-
-        embed.add_field(
-            name="Why Unban?",
-            value=self.reason.value,
-            inline=False
-        )
+        embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+        embed.add_field(name="Username", value=self.username.value, inline=False)
+        embed.add_field(name="Ban Reason", value=ban_reason, inline=False)
+        embed.add_field(name="Was Ban Justified?", value=self.justified.value, inline=False)
+        embed.add_field(name="Why Unban?", value=self.reason.value, inline=False)
 
         view = StaffReviewView(interaction.user.id)
 
         await review_channel.send(embed=embed, view=view)
 
-        await interaction.response.send_message(
-            "Your appeal has been submitted.",
-            ephemeral=True
+        await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
+
+
+# ---------------- DISCORD SUPPORT MODAL ---------------- #
+
+class DiscordSupportModal(Modal):
+
+    def __init__(self):
+        super().__init__(title="Discord Issue Support")
+
+        self.q1 = TextInput(label="Is this about another discord user?")
+        self.q2 = TextInput(label="Do you have proof?")
+        self.q3 = TextInput(label="What happened?", style=discord.TextStyle.paragraph)
+        self.q4 = TextInput(label="Did this happen in the roommates discord server?")
+
+        self.add_item(self.q1)
+        self.add_item(self.q2)
+        self.add_item(self.q3)
+        self.add_item(self.q4)
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        embed = discord.Embed(
+            title="New Discord Support Request",
+            color=discord.Color.blurple()
         )
+
+        embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+        embed.add_field(name="About another user?", value=self.q1.value, inline=False)
+        embed.add_field(name="Proof?", value=self.q2.value, inline=False)
+        embed.add_field(name="What happened?", value=self.q3.value, inline=False)
+        embed.add_field(name="Happened in server?", value=self.q4.value, inline=False)
+
+        await interaction.channel.send(embed=embed)
+
+        await interaction.response.send_message("Your support request has been submitted.", ephemeral=True)
 
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
@@ -232,43 +227,26 @@ class StaffReviewView(View):
             role = appeal_guild.get_role(ACCEPTED_ROLE)
             await member.add_roles(role)
 
-        await accepted_channel.send(
-            f"{user.mention} your appeal has been accepted."
-        )
+        await accepted_channel.send(f"{user.mention} your appeal has been accepted.")
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
-        embed.add_field(
-            name="Result",
-            value=f"Accepted by {interaction.user.mention}",
-            inline=False
-        )
+        embed.add_field(name="Result", value=f"Accepted by {interaction.user.mention}", inline=False)
 
         await interaction.message.edit(embed=embed, view=None)
 
-        await interaction.response.send_message(
-            "Appeal accepted.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("Appeal accepted.", ephemeral=True)
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: Button):
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
-
-        embed.add_field(
-            name="Result",
-            value=f"Denied by {interaction.user.mention}",
-            inline=False
-        )
+        embed.add_field(name="Result", value=f"Denied by {interaction.user.mention}", inline=False)
 
         await interaction.message.edit(embed=embed, view=None)
 
-        await interaction.response.send_message(
-            "Appeal denied.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("Appeal denied.", ephemeral=True)
 
 
 # ---------------- APPEAL PANEL ---------------- #
@@ -278,59 +256,32 @@ class AppealPanel(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="Appeal Here",
-        style=discord.ButtonStyle.success,
-        emoji="🔨",
-        custom_id="appeal_here"
-    )
+    @discord.ui.button(label="Appeal Here", style=discord.ButtonStyle.success, emoji="🔨", custom_id="appeal_here")
     async def appeal(self, interaction: discord.Interaction, button: Button):
 
         banned_role = interaction.guild.get_role(BANNED_ROLE_ID)
 
         if banned_role not in interaction.user.roles:
-
-            await interaction.response.send_message(
-                "You cannot appeal because you are not banned.",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message("You cannot appeal because you are not banned.", ephemeral=True)
             return
 
         await interaction.response.send_modal(AppealModal())
 
-    @discord.ui.button(
-        label="Ban Case",
-        style=discord.ButtonStyle.secondary,
-        emoji="📄",
-        custom_id="ban_case"
-    )
+    @discord.ui.button(label="Ban Case", style=discord.ButtonStyle.secondary, emoji="📄", custom_id="ban_case")
     async def case(self, interaction: discord.Interaction, button: Button):
 
         main_guild = bot.get_guild(MAIN_GUILD_ID)
 
         try:
-
             ban = await main_guild.fetch_ban(interaction.user)
             reason = ban.reason or "No reason provided"
 
-            embed = discord.Embed(
-                title="Your Ban Case",
-                description=f"Reason: {reason}",
-                color=discord.Color.red()
-            )
+            embed = discord.Embed(title="Your Ban Case", description=f"Reason: {reason}", color=discord.Color.red())
 
-            await interaction.response.send_message(
-                embed=embed,
-                ephemeral=True
-            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
         except:
-
-            await interaction.response.send_message(
-                "You are not banned in the main server.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("You are not banned in the main server.", ephemeral=True)
 
 
 # ---------------- SUPPORT PANEL ---------------- #
@@ -342,7 +293,7 @@ class SupportView(View):
 
     @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩", custom_id="support_discord")
     async def discord_ticket(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("Support ticket feature not connected yet.", ephemeral=True)
+        await interaction.response.send_modal(DiscordSupportModal())
 
     @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
     async def ingame_ticket(self, interaction: discord.Interaction, button: Button):
@@ -367,8 +318,7 @@ async def send_support_panel():
             "If you're experiencing an issue, our support team is here to help.\n\n"
             "**Before opening a ticket, please remember:**\n"
             "• Staff will respond as soon as possible after your ticket is created\n"
-            "• You can also use the **in-game support button**\n\n"
-            "*TicketTool.xyz – Ticketing without clutter*"
+            "• You can also use the **in-game support button**\n"
         ),
         color=discord.Color.purple()
     )
@@ -383,7 +333,6 @@ async def send_panel():
     channel = bot.get_channel(PANEL_CHANNEL_ID)
 
     async for msg in channel.history(limit=20):
-
         if msg.author == bot.user:
             return
 
