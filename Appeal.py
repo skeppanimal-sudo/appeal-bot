@@ -173,7 +173,7 @@ class DiscordSupportModal(Modal):
         self.q1 = TextInput(label="Is this about another discord user?")
         self.q2 = TextInput(label="Do you have proof?")
         self.q3 = TextInput(label="What happened?", style=discord.TextStyle.paragraph)
-        self.q4 = TextInput(label="Did this happen in the roommates discord server?")
+        self.q4 = TextInput(label="Did this happen in RoomMates server?")  # ✅ FIXED
 
         self.add_item(self.q1)
         self.add_item(self.q2)
@@ -182,7 +182,6 @@ class DiscordSupportModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        # ✅ FIX: defer immediately
         await interaction.response.defer(ephemeral=True)
 
         embed = discord.Embed(
