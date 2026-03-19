@@ -18,17 +18,21 @@ ACCEPTED_CHANNEL = 1482442063592161594
 ACCEPTED_ROLE = 1482444757178388673
 
 SUPPORT_CHANNEL_ID = 1476717007717142735
-STAFF_PING = 1476717006794264601
 
-intents = discord.Intents.all()
+
+intents = discord.Intents.default()
+intents.members = True
+intents.guilds = True
+intents.messages = True
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-ticket_counter = 0
 
 
 # ---------------- BAN ROLE SYSTEM ---------------- #
 
 async def update_roles(member):
+
     main_guild = bot.get_guild(MAIN_GUILD_ID)
     appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
 
@@ -42,31 +46,39 @@ async def update_roles(member):
         banned = False
 
     if banned:
+
         if banned_role not in member.roles:
             await member.add_roles(banned_role)
+
         if not_banned_role in member.roles:
             await member.remove_roles(not_banned_role)
+
     else:
+
         if not_banned_role not in member.roles:
             await member.add_roles(not_banned_role)
+
         if banned_role in member.roles:
             await member.remove_roles(banned_role)
 
 
 @tasks.loop(minutes=10)
 async def check_bans():
+
     guild = bot.get_guild(APPEAL_GUILD_ID)
+
     for member in guild.members:
         await update_roles(member)
 
 
 @bot.event
 async def on_member_join(member):
+
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
 
 
-# ---------------- AUTO THUMBS UP ---------------- #
+# ---------------- AUTO THUMBS UP SYSTEM ---------------- #
 
 REACTION_CHANNELS = [
     1482516620730433625,
@@ -77,6 +89,7 @@ REACTION_CHANNELS = [
 
 @bot.event
 async def on_message(message):
+
     if message.author.bot:
         return
 
@@ -90,14 +103,18 @@ async def on_message(message):
 
 
 async def react_to_old_messages():
+
     await bot.wait_until_ready()
 
     for channel_id in REACTION_CHANNELS:
+
         channel = bot.get_channel(channel_id)
+
         if channel is None:
             continue
 
         async for message in channel.history(limit=None):
+
             try:
                 if not any(str(r.emoji) == "👍" for r in message.reactions):
                     await message.add_reaction("👍")
@@ -108,18 +125,30 @@ async def react_to_old_messages():
 # ---------------- APPEAL MODAL ---------------- #
 
 class AppealModal(Modal):
+
     def __init__(self):
         super().__init__(title="RoomMates Ban Appeal")
 
-        self.username = TextInput(label="What's your username?")
-        self.justified = TextInput(label="Do you think your ban was justified?", style=discord.TextStyle.paragraph)
-        self.reason = TextInput(label="Why should you be unbanned?", style=discord.TextStyle.paragraph)
+        self.username = TextInput(
+            label="What's your username?"
+        )
+
+        self.justified = TextInput(
+            label="Do you think your ban was justified?",
+            style=discord.TextStyle.paragraph
+        )
+
+        self.reason = TextInput(
+            label="Why should you be unbanned?",
+            style=discord.TextStyle.paragraph
+        )
 
         self.add_item(self.username)
         self.add_item(self.justified)
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction):
+
         review_channel = bot.get_channel(APPEAL_REVIEW_CHANNEL)
         main_guild = bot.get_guild(MAIN_GUILD_ID)
 
@@ -129,23 +158,55 @@ class AppealModal(Modal):
         except:
             ban_reason = "Unknown"
 
-        embed = discord.Embed(title="New Ban Appeal", color=discord.Color.orange())
+        embed = discord.Embed(
+            title="New Ban Appeal",
+            color=discord.Color.orange()
+        )
 
-        embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=False)
-        embed.add_field(name="Username", value=self.username.value, inline=False)
-        embed.add_field(name="Ban Reason", value=ban_reason, inline=False)
-        embed.add_field(name="Was Ban Justified?", value=self.justified.value, inline=False)
-        embed.add_field(name="Why Unban?", value=self.reason.value, inline=False)
+        embed.add_field(
+            name="User",
+            value=f"{interaction.user} ({interaction.user.id})",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Username",
+            value=self.username.value,
+            inline=False
+        )
+
+        embed.add_field(
+            name="Ban Reason",
+            value=ban_reason,
+            inline=False
+        )
+
+        embed.add_field(
+            name="Was Ban Justified?",
+            value=self.justified.value,
+            inline=False
+        )
+
+        embed.add_field(
+            name="Why Unban?",
+            value=self.reason.value,
+            inline=False
+        )
 
         view = StaffReviewView(interaction.user.id)
 
         await review_channel.send(embed=embed, view=view)
-        await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
+
+        await interaction.response.send_message(
+            "Your appeal has been submitted.",
+            ephemeral=True
+        )
 
 
-# ---------------- STAFF REVIEW ---------------- #
+# ---------------- STAFF REVIEW BUTTONS ---------------- #
 
 class StaffReviewView(View):
+
     def __init__(self, user_id):
         super().__init__(timeout=None)
         self.user_id = user_id
@@ -155,6 +216,7 @@ class StaffReviewView(View):
 
         main_guild = bot.get_guild(MAIN_GUILD_ID)
         appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
+
         accepted_channel = bot.get_channel(ACCEPTED_CHANNEL)
 
         user = await bot.fetch_user(self.user_id)
@@ -170,146 +232,172 @@ class StaffReviewView(View):
             role = appeal_guild.get_role(ACCEPTED_ROLE)
             await member.add_roles(role)
 
-        await accepted_channel.send(f"{user.mention} your appeal has been accepted.")
+        await accepted_channel.send(
+            f"{user.mention} your appeal has been accepted."
+        )
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
-        embed.add_field(name="Result", value=f"Accepted by {interaction.user.mention}", inline=False)
+        embed.add_field(
+            name="Result",
+            value=f"Accepted by {interaction.user.mention}",
+            inline=False
+        )
 
         await interaction.message.edit(embed=embed, view=None)
-        await interaction.response.send_message("Appeal accepted.", ephemeral=True)
+
+        await interaction.response.send_message(
+            "Appeal accepted.",
+            ephemeral=True
+        )
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: Button):
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
-        embed.add_field(name="Result", value=f"Denied by {interaction.user.mention}", inline=False)
+
+        embed.add_field(
+            name="Result",
+            value=f"Denied by {interaction.user.mention}",
+            inline=False
+        )
 
         await interaction.message.edit(embed=embed, view=None)
-        await interaction.response.send_message("Appeal denied.", ephemeral=True)
 
-
-# ---------------- CLOSE SYSTEM ---------------- #
-
-class CloseConfirm(View):
-    def __init__(self):
-        super().__init__(timeout=60)
-
-    @discord.ui.button(label="Yes", style=discord.ButtonStyle.danger)
-    async def yes(self, interaction: discord.Interaction, button: Button):
-        await interaction.channel.edit(locked=True, archived=True)
-        await interaction.response.send_message("Ticket closed.", ephemeral=True)
-
-    @discord.ui.button(label="No", style=discord.ButtonStyle.secondary)
-    async def no(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("Cancelled.", ephemeral=True)
-
-
-class CloseButton(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
-    async def close(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message(
-            "Are you sure you want to close this ticket?",
-            view=CloseConfirm(),
+            "Appeal denied.",
             ephemeral=True
         )
 
 
-# ---------------- SUPPORT MODAL ---------------- #
+# ---------------- APPEAL PANEL ---------------- #
 
-class DiscordSupportModal(Modal):
+class AppealPanel(View):
+
     def __init__(self):
-        super().__init__(title="Discord Issue Support")
+        super().__init__(timeout=None)
 
-        self.q1 = TextInput(label="Is this about another discord user?")
-        self.q2 = TextInput(label="Do you have proof?")
-        self.q3 = TextInput(label="What happened?", style=discord.TextStyle.paragraph)
-        self.q4 = TextInput(label="Did this happen in RoomMates server?")
+    @discord.ui.button(
+        label="Appeal Here",
+        style=discord.ButtonStyle.success,
+        emoji="🔨",
+        custom_id="appeal_here"
+    )
+    async def appeal(self, interaction: discord.Interaction, button: Button):
 
-        self.add_item(self.q1)
-        self.add_item(self.q2)
-        self.add_item(self.q3)
-        self.add_item(self.q4)
+        banned_role = interaction.guild.get_role(BANNED_ROLE_ID)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        global ticket_counter
-        ticket_counter += 1
+        if banned_role not in interaction.user.roles:
 
-        await interaction.response.defer(ephemeral=True)
+            await interaction.response.send_message(
+                "You cannot appeal because you are not banned.",
+                ephemeral=True
+            )
 
-        embed = discord.Embed(
-            title="Discord Issue Support",
-            description="If you said 'no' DO NOT FILE A TICKET HERE",
-            color=discord.Color.dark_purple()
-        )
+            return
 
-        embed.add_field(name="Is the issue about another Discord User?", value=self.q1.value, inline=False)
-        embed.add_field(name="What is the issue you are experience?", value=self.q3.value, inline=False)
-        embed.add_field(name="Do you have proof?", value=self.q2.value, inline=False)
-        embed.add_field(name="Did this issue happen in the AC Discord?", value=self.q4.value, inline=False)
+        await interaction.response.send_modal(AppealModal())
 
-        channel = await bot.fetch_channel(SUPPORT_CHANNEL_ID)
+    @discord.ui.button(
+        label="Ban Case",
+        style=discord.ButtonStyle.secondary,
+        emoji="📄",
+        custom_id="ban_case"
+    )
+    async def case(self, interaction: discord.Interaction, button: Button):
 
-        msg = await channel.send("Creating ticket...")
+        main_guild = bot.get_guild(MAIN_GUILD_ID)
 
-        thread = await msg.create_thread(
-            name=f"ticket-{ticket_counter}",
-            type=discord.ChannelType.private_thread
-        )
+        try:
 
-        await thread.add_user(interaction.user)
+            ban = await main_guild.fetch_ban(interaction.user)
+            reason = ban.reason or "No reason provided"
 
-        await thread.send(
-            content=f"<@{STAFF_PING}> {interaction.user.mention}",
-            embed=embed,
-            view=CloseButton()
-        )
+            embed = discord.Embed(
+                title="Your Ban Case",
+                description=f"Reason: {reason}",
+                color=discord.Color.red()
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except:
+
+            await interaction.response.send_message(
+                "You are not banned in the main server.",
+                ephemeral=True
+            )
 
 
 # ---------------- SUPPORT PANEL ---------------- #
 
 class SupportView(View):
+
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success)
-    async def ticket(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(DiscordSupportModal())
+    @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩", custom_id="support_discord")
+    async def discord_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("Support ticket feature not connected yet.", ephemeral=True)
+
+    @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
+    async def ingame_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
 
 
 async def send_support_panel():
-    channel = await bot.fetch_channel(SUPPORT_CHANNEL_ID)
+
+    channel = bot.get_channel(SUPPORT_CHANNEL_ID)
+
+    if channel is None:
+        channel = await bot.fetch_channel(SUPPORT_CHANNEL_ID)
+
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            return
 
     embed = discord.Embed(
         title="Support",
-        description="Click below to create a ticket.",
+        description=(
+            "**🎟️ Need Help?**\n\n"
+            "If you're experiencing an issue, our support team is here to help.\n\n"
+            "**Before opening a ticket, please remember:**\n"
+            "• Staff will respond as soon as possible after your ticket is created\n"
+            "• You can also use the **in-game support button**\n"
+        ),
         color=discord.Color.purple()
     )
 
     await channel.send(embed=embed, view=SupportView())
 
 
-# ---------------- APPEAL PANEL SEND ---------------- #
-
-class AppealPanel(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Appeal Here", style=discord.ButtonStyle.success)
-    async def appeal(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(AppealModal())
-
+# ---------------- AUTO PANEL ---------------- #
 
 async def send_panel():
-    channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
+
+    channel = bot.get_channel(PANEL_CHANNEL_ID)
+
+    async for msg in channel.history(limit=20):
+
+        if msg.author == bot.user:
+            return
 
     embed = discord.Embed(
         title="🏠 RoomMates VC Ban Appeals",
-        description="Click below to appeal.",
+        description=(
+            "Welcome to the **RoomMates VC Ban Appeal System**.\n\n"
+            "**How to appeal**\n"
+            "Press **🔨 Appeal Here** and complete the form.\n\n"
+            "**What happens next?**\n"
+            "• Staff will review your appeal.\n"
+            "• If accepted you will be notified.\n"
+            "• If declined after **7 days**, you may appeal again.\n\n"
+            "You can view your **ban reason** using the Ban Case button."
+        ),
         color=discord.Color.green()
     )
 
@@ -320,17 +408,25 @@ async def send_panel():
 
 @bot.event
 async def on_ready():
+
     print(f"Logged in as {bot.user}")
 
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
-    bot.add_view(CloseButton())
 
     check_bans.start()
+
     bot.loop.create_task(react_to_old_messages())
 
     await send_panel()
     await send_support_panel()
+
+
+# ---------------- GAMELINK COMMAND ---------------- #
+
+@bot.command()
+async def gamelink(ctx):
+    await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
 
 
 bot.run(TOKEN)
