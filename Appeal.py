@@ -17,6 +17,8 @@ APPEAL_REVIEW_CHANNEL = 1482443249594400996
 ACCEPTED_CHANNEL = 1482442063592161594
 ACCEPTED_ROLE = 1482444757178388673
 
+SUPPORT_CHANNEL_ID = 1476717007717142735  # ✅ ADDED
+
 
 intents = discord.Intents.default()
 intents.members = True
@@ -331,6 +333,49 @@ class AppealPanel(View):
             )
 
 
+# ---------------- SUPPORT PANEL ---------------- #
+
+class SupportView(View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩", custom_id="support_discord")
+    async def discord_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("Support ticket feature not connected yet.", ephemeral=True)
+
+    @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
+    async def ingame_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
+
+
+async def send_support_panel():
+
+    channel = bot.get_channel(SUPPORT_CHANNEL_ID)
+
+    if channel is None:
+        channel = await bot.fetch_channel(SUPPORT_CHANNEL_ID)
+
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            return
+
+    embed = discord.Embed(
+        title="Support",
+        description=(
+            "**🎟️ Need Help?**\n\n"
+            "If you're experiencing an issue, our support team is here to help.\n\n"
+            "**Before opening a ticket, please remember:**\n"
+            "• Staff will respond as soon as possible after your ticket is created\n"
+            "• You can also use the **in-game support button**\n\n"
+            "*TicketTool.xyz – Ticketing without clutter*"
+        ),
+        color=discord.Color.purple()
+    )
+
+    await channel.send(embed=embed, view=SupportView())
+
+
 # ---------------- AUTO PANEL ---------------- #
 
 async def send_panel():
@@ -368,12 +413,14 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
     bot.add_view(AppealPanel())
+    bot.add_view(SupportView())
 
     check_bans.start()
 
     bot.loop.create_task(react_to_old_messages())
 
     await send_panel()
+    await send_support_panel()
 
 
 # ---------------- GAMELINK COMMAND ---------------- #
