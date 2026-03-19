@@ -193,18 +193,20 @@ class DiscordSupportModal(Modal):
         embed.add_field(name="What happened?", value=self.q3.value, inline=False)
         embed.add_field(name="Happened in server?", value=self.q4.value, inline=False)
 
-        thread = await interaction.channel.create_thread(
+        # ✅ FIX: respond first
+        await interaction.response.send_message("Creating your support ticket...", ephemeral=True)
+
+        # create message for thread
+        msg = await interaction.channel.send(f"Support ticket for {interaction.user.mention}")
+
+        # create private thread properly
+        thread = await msg.create_thread(
             name=f"support-{interaction.user.name}",
             type=discord.ChannelType.private_thread
         )
 
         await thread.add_user(interaction.user)
         await thread.send(embed=embed)
-
-        await interaction.response.send_message(
-            f"Your support ticket has been created: {thread.mention}",
-            ephemeral=True
-        )
 
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
