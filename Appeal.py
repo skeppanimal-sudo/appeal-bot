@@ -79,7 +79,7 @@ class GiveawayView(View):
 
         embed = discord.Embed(
             title=f"🎉 {giveaway['title']}",
-            color=discord.Color.white()
+            color=discord.Color.from_rgb(255, 255, 255)
         )
 
         end_time_str = giveaway["end_time"].strftime("%d %B %Y %H:%M")
@@ -135,7 +135,7 @@ async def end_giveaway(message_id: int, channel_id: int):
 
     embed = discord.Embed(
         title=f"🎉 {giveaway['title']}",
-        color=discord.Color.white()
+        color=discord.Color.from_rgb(255, 255, 255)
     )
     embed.add_field(name="Ended", value=end_time_str, inline=False)
     embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
@@ -447,7 +447,7 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
     end_time = datetime.now(UTC) + delta
     end_time_str = end_time.strftime("%d %B %Y %H:%M")
 
-    embed = discord.Embed(title=f"🎉 {title}", color=discord.Color.white())
+    embed = discord.Embed(title=f"🎉 {title}", color=discord.Color.from_rgb(255, 255, 255))
     embed.add_field(name="Ends", value=end_time_str, inline=False)
     embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
     embed.add_field(name="Entries", value="0", inline=False)
