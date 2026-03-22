@@ -83,7 +83,6 @@ class GiveawayView(View):
             title=f"{giveaway['title']}",
             color=discord.Color.from_rgb(255, 255, 255)
         )
-
         embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
         embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
         embed.add_field(name="Entries", value=f"**{len(giveaway['entries'])}**", inline=False)
@@ -144,6 +143,7 @@ async def end_giveaway(message_id: int, channel_id: int):
 
     await message.edit(embed=embed, view=None)
     GIVEAWAYS.pop(message_id, None)
+
 # ---------------- BAN ROLE SYSTEM ---------------- #
 
 async def update_roles(member):
@@ -184,7 +184,6 @@ async def on_member_join(member):
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
 
-
 # ---------------- AUTO THUMBS UP SYSTEM ---------------- #
 
 REACTION_CHANNELS = [
@@ -192,7 +191,6 @@ REACTION_CHANNELS = [
     1478798153288384624,
     1482514244997091479
 ]
-
 
 @bot.event
 async def on_message(message):
@@ -207,7 +205,6 @@ async def on_message(message):
             pass
 
     await bot.process_commands(message)
-
 
 async def react_to_old_messages():
 
@@ -227,7 +224,6 @@ async def react_to_old_messages():
                     await message.add_reaction("👍")
             except:
                 pass
-
 
 # ---------------- APPEAL MODAL ---------------- #
 
@@ -266,7 +262,6 @@ class AppealModal(Modal):
 
         await review_channel.send(embed=embed, view=view)
         await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
-
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
 
@@ -314,7 +309,6 @@ class StaffReviewView(View):
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message("Appeal denied.", ephemeral=True)
 
-
 # ---------------- APPEAL PANEL ---------------- #
 
 class AppealPanel(View):
@@ -352,7 +346,6 @@ class AppealPanel(View):
         except:
             await interaction.response.send_message("You are not banned in the main server.", ephemeral=True)
 
-
 # ---------------- SUPPORT PANEL ---------------- #
 
 class SupportView(View):
@@ -367,7 +360,6 @@ class SupportView(View):
     @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
     async def ingame_ticket(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
-
 
 async def send_support_panel():
 
@@ -393,7 +385,6 @@ async def send_support_panel():
     )
 
     await channel.send(embed=embed, view=SupportView())
-
 
 # ---------------- AUTO PANEL ---------------- #
 
@@ -422,6 +413,29 @@ async def send_panel():
 
     await channel.send(embed=embed, view=AppealPanel())
 
+# ---------------- NEW SLOWMODE COMMAND ---------------- #
+
+@bot.tree.command(name="slowmode", description="Set slowmode for a channel")
+@app_commands.describe(
+    channel="Channel to apply slowmode to",
+    time="Slowmode duration in seconds (0 to disable)"
+)
+@app_commands.checks.has_permissions(manage_channels=True)
+async def slowmode(interaction: discord.Interaction, channel: discord.TextChannel, time: int):
+
+    if time < 0:
+        await interaction.response.send_message("Slowmode time cannot be negative.", ephemeral=True)
+        return
+
+    try:
+        await channel.edit(slowmode_delay=time)
+        if time == 0:
+            await interaction.response.send_message(f"Slowmode disabled in {channel.mention}.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"Slowmode set to **{time} seconds** in {channel.mention}.", ephemeral=True)
+    except Exception as e:
+        print("SLOWMODE ERROR:", e)
+        await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
 
 # ---------------- GIVEAWAY COMMAND ---------------- #
 
@@ -471,7 +485,6 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
 
     await interaction.followup.send(f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.", ephemeral=True)
 
-
 @giveaway.error
 async def giveaway_error(interaction: discord.Interaction, error):
     print("GIVEAWAY ERROR:", error)
@@ -482,7 +495,6 @@ async def giveaway_error(interaction: discord.Interaction, error):
             await interaction.response.send_message("An error occurred while running this command.", ephemeral=True)
         except:
             pass
-
 
 # ---------------- READY ---------------- #
 
@@ -506,12 +518,10 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-
 # ---------------- GAMELINK COMMAND ---------------- #
 
 @bot.command()
 async def gamelink(ctx):
     await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
-
 
 bot.run(TOKEN)
