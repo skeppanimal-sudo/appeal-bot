@@ -474,6 +474,7 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
 
 @giveaway.error
 async def giveaway_error(interaction: discord.Interaction, error):
+    print("GIVEAWAY ERROR:", error)
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
     else:
