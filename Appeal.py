@@ -299,9 +299,9 @@ async def sync_member_roles(member):
             await appeal_member.remove_roles(appeal_role)
             await debug_log(f"Synced role: {member.id} lost appeal role")
 
-@tasks.loop(minutes=10)
+@tasks.loop(seconds=10)
 async def sync_roles_task():
-    """Checks all members every 10 minutes and syncs roles."""
+    """Checks all members every 10 seconds and syncs roles."""
     main_guild = bot.get_guild(MAIN_GUILD_ID)
     appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
 
