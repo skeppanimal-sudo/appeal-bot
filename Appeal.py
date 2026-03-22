@@ -77,16 +77,16 @@ class GiveawayView(View):
             await interaction.response.send_message("Entry saved but embed couldn't update.", ephemeral=True)
             return
 
+        unix = int(giveaway["end_time"].timestamp())
+
         embed = discord.Embed(
             title=f"🎉 {giveaway['title']}",
             color=discord.Color.from_rgb(255, 255, 255)
         )
 
-        end_time_str = giveaway["end_time"].strftime("%d %B %Y %H:%M")
-
-        embed.add_field(name="Ends", value=end_time_str, inline=False)
+        embed.add_field(name="Ends", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
         embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
-        embed.add_field(name="Entries", value=str(len(giveaway["entries"])), inline=False)
+        embed.add_field(name="Entries", value=f"**{len(giveaway['entries'])}**", inline=False)
 
         await message.edit(embed=embed, view=self)
         await interaction.response.send_message("You joined the giveaway!", ephemeral=True)
@@ -131,15 +131,15 @@ async def end_giveaway(message_id: int, channel_id: int):
         winners = random.sample(entries, winner_count)
         winners_text = ", ".join(f"<@{uid}>" for uid in winners)
 
-    end_time_str = giveaway["end_time"].strftime("%d %B %Y %H:%M")
+    unix = int(giveaway["end_time"].timestamp())
 
     embed = discord.Embed(
         title=f"🎉 {giveaway['title']}",
         color=discord.Color.from_rgb(255, 255, 255)
     )
-    embed.add_field(name="Ended", value=end_time_str, inline=False)
+    embed.add_field(name="Ended", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
     embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
-    embed.add_field(name="Entries", value=str(len(entries)), inline=False)
+    embed.add_field(name="Entries", value=f"**{len(entries)}**", inline=False)
     embed.add_field(name="Winners", value=winners_text, inline=False)
 
     await message.edit(embed=embed, view=None)
@@ -445,12 +445,12 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         return
 
     end_time = datetime.now(UTC) + delta
-    end_time_str = end_time.strftime("%d %B %Y %H:%M")
+    unix = int(end_time.timestamp())
 
     embed = discord.Embed(title=f"🎉 {title}", color=discord.Color.from_rgb(255, 255, 255))
-    embed.add_field(name="Ends", value=end_time_str, inline=False)
+    embed.add_field(name="Ends", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
     embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
-    embed.add_field(name="Entries", value="0", inline=False)
+    embed.add_field(name="Entries", value="**0**", inline=False)
 
     await interaction.response.defer()
     message = await interaction.channel.send(embed=embed)
@@ -469,7 +469,7 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
 
     bot.loop.create_task(end_giveaway(message.id, interaction.channel.id))
 
-    await interaction.followup.send(f"Giveaway created for **{title}** ending at `{end_time_str}`.", ephemeral=True)
+    await interaction.followup.send(f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.", ephemeral=True)
 
 
 @giveaway.error
