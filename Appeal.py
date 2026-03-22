@@ -37,7 +37,6 @@ invite_cache = {}
 conn = sqlite3.connect("invites.db")
 cursor = conn.cursor()
 
-# Create new schema if missing
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS invites (
     user_id TEXT PRIMARY KEY,
@@ -46,13 +45,12 @@ CREATE TABLE IF NOT EXISTS invites (
 )
 """)
 
-# MIGRATE old "count" column if it exists
 try:
     cursor.execute("SELECT count FROM invites LIMIT 1")
     old_data = cursor.fetchall()
 
     for row in old_data:
-        pass  # If this works, old schema exists
+        pass
 
     cursor.execute("ALTER TABLE invites ADD COLUMN regular INTEGER DEFAULT 0")
     cursor.execute("ALTER TABLE invites ADD COLUMN left INTEGER DEFAULT 0")
@@ -62,7 +60,7 @@ try:
 
     conn.commit()
 except:
-    pass  # Already upgraded
+    pass
 
 conn.commit()
 
@@ -513,17 +511,19 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
     regular, left_count = get_invites(str(user.id))
 
     embed = discord.Embed(
-        title=f"{user.name}'s Invites",
-        description=(
-            f"**Regular Invites:** {regular}\n"
-            f"**Left Invites:** {left_count}\n"
-            f"**Total:** {regular}"
-        ),
+        title=f"{user.display_name}",
+        description=f"You currently have **{regular} invites.**",
         color=discord.Color.from_rgb(255, 255, 255)
     )
 
+    embed.add_field(
+        name="Invites",
+        value=f"{regular} regular\n{left_count} left",
+        inline=False
+    )
+
     embed.set_thumbnail(url=user.display_avatar.url)
-    embed.set_footer(text=f"Requested by {interaction.user}")
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
 
     await interaction.response.send_message(embed=embed)
 
@@ -682,23 +682,7 @@ async def on_member_remove(member):
 
     guild = member.guild
 
-    # Try to detect who invited them
-    try:
-        invites = await guild.invites()
-    except:
-        return
-
-    # We cannot detect the inviter on leave directly
-    # So we track last known invite usage
-    # This is the standard method used by invite bots
-
-    for inviter_id, data in invite_cache.items():
-        pass  # placeholder
-
-    # Instead, we track the inviter by scanning DB for who has the most invites
-    # This is not perfect but works for your use case
-
-    # Remove 1 invite from whoever invited the most people
+    # This is a heuristic: remove 1 invite from the top inviter
     cursor.execute("SELECT user_id, regular FROM invites ORDER BY regular DESC LIMIT 1")
     row = cursor.fetchone()
 
