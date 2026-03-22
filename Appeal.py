@@ -80,11 +80,11 @@ class GiveawayView(View):
         unix = int(giveaway["end_time"].timestamp())
 
         embed = discord.Embed(
-            title=f"🎉 {giveaway['title']}",
+            title=f"{giveaway['title']}",
             color=discord.Color.from_rgb(255, 255, 255)
         )
 
-        embed.add_field(name="Ends", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
+        embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
         embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
         embed.add_field(name="Entries", value=f"**{len(giveaway['entries'])}**", inline=False)
 
@@ -134,10 +134,10 @@ async def end_giveaway(message_id: int, channel_id: int):
     unix = int(giveaway["end_time"].timestamp())
 
     embed = discord.Embed(
-        title=f"🎉 {giveaway['title']}",
+        title=f"{giveaway['title']}",
         color=discord.Color.from_rgb(255, 255, 255)
     )
-    embed.add_field(name="Ended", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
+    embed.add_field(name="Ended", value=f"<t:{unix}:R>", inline=False)
     embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
     embed.add_field(name="Entries", value=f"**{len(entries)}**", inline=False)
     embed.add_field(name="Winners", value=winners_text, inline=False)
@@ -447,8 +447,8 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
     end_time = datetime.now(UTC) + delta
     unix = int(end_time.timestamp())
 
-    embed = discord.Embed(title=f"🎉 {title}", color=discord.Color.from_rgb(255, 255, 255))
-    embed.add_field(name="Ends", value=f"<t:{unix}:R> (<t:{unix}:F>)", inline=False)
+    embed = discord.Embed(title=f"{title}", color=discord.Color.from_rgb(255, 255, 255))
+    embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
     embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
     embed.add_field(name="Entries", value="**0**", inline=False)
 
