@@ -3,6 +3,7 @@ import os
 import asyncio
 import random
 import re
+import sqlite3
 from datetime import datetime, timedelta, UTC
 from discord.ext import commands, tasks
 from discord.ui import View, Modal, TextInput, Button
@@ -24,13 +25,39 @@ ACCEPTED_ROLE = 1482444757178388673
 
 SUPPORT_CHANNEL_ID = 1476717007717142735
 
-intents = discord.Intents.default()
-intents.members = True
-intents.guilds = True
-intents.messages = True
-intents.message_content = True
+INVITE_CHANNEL = 1476717008010870813
 
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ---------------- INVITE DATABASE SETUP ---------------- #
+
+conn = sqlite3.connect("invites.db")
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS invites (
+    user_id TEXT PRIMARY KEY,
+    count INTEGER DEFAULT 0
+)
+""")
+
+conn.commit()
+
+def get_invites(user_id: str) -> int:
+    cursor.execute("SELECT count FROM invites WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+def add_invite(user_id: str):
+    current = get_invites(user_id)
+    if current == 0:
+        cursor.execute("INSERT OR REPLACE INTO invites (user_id, count) VALUES (?, ?)", (user_id, 1))
+    else:
+        cursor.execute("UPDATE invites SET count = ? WHERE user_id = ?", (current + 1, user_id))
+    conn.commit()
+
+invite_cache = {}
 
 # ---------------- GIVEAWAY STORAGE ---------------- #
 
@@ -58,7 +85,7 @@ class GiveawayView(View):
         self.message_id = message_id
 
     @discord.ui.button(label="Join", style=discord.ButtonStyle.success, emoji="🎉", custom_id="giveaway_join")
-    async def join(self, interaction: discord.Interaction, button: Button):
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
         giveaway = GIVEAWAYS.get(self.message_id)
         if not giveaway:
             await interaction.response.send_message("This giveaway has ended.", ephemeral=True)
@@ -171,17 +198,10 @@ async def update_roles(member):
         if banned_role in member.roles:
             await member.remove_roles(banned_role)
 
-
 @tasks.loop(minutes=10)
 async def check_bans():
     guild = bot.get_guild(APPEAL_GUILD_ID)
     for member in guild.members:
-        await update_roles(member)
-
-
-@bot.event
-async def on_member_join(member):
-    if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
 
 # ---------------- AUTO THUMBS UP SYSTEM ---------------- #
@@ -272,7 +292,7 @@ class StaffReviewView(View):
         self.user_id = user_id
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
-    async def accept(self, interaction: discord.Interaction, button: Button):
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         main_guild = bot.get_guild(MAIN_GUILD_ID)
         appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
@@ -300,7 +320,7 @@ class StaffReviewView(View):
         await interaction.response.send_message("Appeal accepted.", ephemeral=True)
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
-    async def deny(self, interaction: discord.Interaction, button: Button):
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
@@ -317,7 +337,7 @@ class AppealPanel(View):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="DISCORD APPEAL", style=discord.ButtonStyle.success, emoji="🔨", custom_id="appeal_here")
-    async def appeal(self, interaction: discord.Interaction, button: Button):
+    async def appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         banned_role = interaction.guild.get_role(BANNED_ROLE_ID)
 
@@ -328,11 +348,11 @@ class AppealPanel(View):
         await interaction.response.send_modal(AppealModal())
 
     @discord.ui.button(label="GAME APPEAL", style=discord.ButtonStyle.primary, emoji="🎮", custom_id="game_appeal")
-    async def game_appeal(self, interaction: discord.Interaction, button: Button):
+    async def game_appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("Game appeal system coming soon.", ephemeral=True)
 
     @discord.ui.button(label="Ban Case", style=discord.ButtonStyle.secondary, emoji="📄", custom_id="ban_case")
-    async def case(self, interaction: discord.Interaction, button: Button):
+    async def case(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         main_guild = bot.get_guild(MAIN_GUILD_ID)
 
@@ -354,11 +374,11 @@ class SupportView(View):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩", custom_id="support_discord")
-    async def discord_ticket(self, interaction: discord.Interaction, button: Button):
+    async def discord_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("Support ticket feature not connected yet.", ephemeral=True)
 
     @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
-    async def ingame_ticket(self, interaction: discord.Interaction, button: Button):
+    async def ingame_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
 
 async def send_support_panel():
@@ -437,6 +457,28 @@ async def slowmode(interaction: discord.Interaction, channel: discord.TextChanne
         print("SLOWMODE ERROR:", e)
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
 
+# ---------------- INVITES COMMAND ---------------- #
+
+@bot.tree.command(name="invites", description="Check how many invites a user has")
+@app_commands.describe(user="User to check")
+async def invites(interaction: discord.Interaction, user: discord.Member = None):
+
+    if user is None:
+        user = interaction.user
+
+    count = get_invites(str(user.id))
+
+    embed = discord.Embed(
+        title=f"{user.name}'s Invites",
+        description=f"**{count} total invites**",
+        color=discord.Color.from_rgb(255, 255, 255)
+    )
+
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.set_footer(text=f"Requested by {interaction.user}")
+
+    await interaction.response.send_message(embed=embed)
+
 # ---------------- GIVEAWAY COMMAND ---------------- #
 
 @bot.tree.command(name="giveaway", description="Create a giveaway")
@@ -503,6 +545,14 @@ async def on_ready():
 
     print(f"Logged in as {bot.user}")
 
+    # cache invites for all guilds
+    for guild in bot.guilds:
+        try:
+            invites = await guild.invites()
+            invite_cache[guild.id] = {i.code: i.uses for i in invites}
+        except:
+            invite_cache[guild.id] = {}
+
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
 
@@ -517,6 +567,43 @@ async def on_ready():
         print("Slash commands synced.")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
+# ---------------- MEMBER JOIN (APPEALS + INVITES) ---------------- #
+
+@bot.event
+async def on_member_join(member):
+
+    # appeals guild role sync
+    if member.guild.id == APPEAL_GUILD_ID:
+        await update_roles(member)
+
+    # invite tracking
+    guild = member.guild
+    try:
+        invites = await guild.invites()
+    except:
+        return
+
+    used = None
+
+    for invite in invites:
+        if invite.uses > invite_cache.get(guild.id, {}).get(invite.code, 0):
+            used = invite
+            break
+
+    invite_cache[guild.id] = {i.code: i.uses for i in invites}
+
+    if used:
+        inviter_id = str(used.inviter.id)
+        add_invite(inviter_id)
+        count = get_invites(inviter_id)
+
+        channel = bot.get_channel(INVITE_CHANNEL)
+        if channel:
+            await channel.send(
+                f"{member.mention} joined using {used.inviter.mention}'s invite! "
+                f"They now have **{count} invites.**"
+            )
 
 # ---------------- GAMELINK COMMAND ---------------- #
 
