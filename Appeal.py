@@ -279,7 +279,7 @@ class AppealPanel(View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Appeal Here",
+        label="DISCORD APPEAL",
         style=discord.ButtonStyle.success,
         emoji="🔨",
         custom_id="appeal_here"
@@ -298,6 +298,18 @@ class AppealPanel(View):
             return
 
         await interaction.response.send_modal(AppealModal())
+
+    @discord.ui.button(
+        label="GAME APPEAL",
+        style=discord.ButtonStyle.primary,
+        emoji="🎮",
+        custom_id="game_appeal"
+    )
+    async def game_appeal(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message(
+            "Game appeal system coming soon.",
+            ephemeral=True
+        )
 
     @discord.ui.button(
         label="Ban Case",
@@ -391,7 +403,7 @@ async def send_panel():
         description=(
             "Welcome to the **RoomMates VC Ban Appeal System**.\n\n"
             "**How to appeal**\n"
-            "Press **🔨 Appeal Here** and complete the form.\n\n"
+            "Press **🔨 DISCORD APPEAL** and complete the form.\n\n"
             "**What happens next?**\n"
             "• Staff will review your appeal.\n"
             "• If accepted you will be notified.\n"
