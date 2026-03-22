@@ -80,6 +80,7 @@ def remove_invite(user_id: str):
     """, (user_id, regular, left_count))
     conn.commit()
     print(f"[DEBUG] Removed invite for {user_id} (regular={regular}, left_count={left_count})")
+
 # ---------------- CONFIG ---------------- #
 
 MAIN_GUILD_ID = 1476717006764900372
@@ -96,6 +97,10 @@ ACCEPTED_ROLE = 1482444757178388673
 
 SUPPORT_CHANNEL_ID = 1476717007717142735
 INVITE_CHANNEL = 1476717008010870813
+
+# --- AUTO ROLE SYNC (MAIN → APPEAL) --- #
+MAIN_SYNC_ROLE = 1485407866453102732      # Role in main server
+APPEAL_SYNC_ROLE = 1482444572687859773    # Role to give in appeal server
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -251,7 +256,6 @@ async def update_roles(member):
             await member.remove_roles(banned_role)
         await debug_log(f"Ban roles updated: {member.id} marked as not banned")
 
-
 @tasks.loop(minutes=10)
 async def check_bans():
     guild = bot.get_guild(APPEAL_GUILD_ID)
@@ -260,6 +264,55 @@ async def check_bans():
         await update_roles(member)
     await debug_log("Finished periodic ban check")
 
+# ---------------- ROLE SYNC MAIN → APPEAL ---------------- #
+
+async def sync_member_roles(member):
+    """Syncs roles from main server to appeal server."""
+    main_guild = bot.get_guild(MAIN_GUILD_ID)
+    appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
+
+    if not main_guild or not appeal_guild:
+        await debug_log("Role sync failed: guild missing")
+        return
+
+    main_member = main_guild.get_member(member.id)
+    appeal_member = appeal_guild.get_member(member.id)
+
+    if not main_member or not appeal_member:
+        return
+
+    main_role = main_guild.get_role(MAIN_SYNC_ROLE)
+    appeal_role = appeal_guild.get_role(APPEAL_SYNC_ROLE)
+
+    if not main_role or not appeal_role:
+        await debug_log("Role sync failed: role missing")
+        return
+
+    # If user has the main role → ensure they have the appeal role
+    if main_role in main_member.roles:
+        if appeal_role not in appeal_member.roles:
+            await appeal_member.add_roles(appeal_role)
+            await debug_log(f"Synced role: {member.id} gained appeal role")
+    else:
+        # Remove appeal role if they lose it in main
+        if appeal_role in appeal_member.roles:
+            await appeal_member.remove_roles(appeal_role)
+            await debug_log(f"Synced role: {member.id} lost appeal role")
+
+@tasks.loop(minutes=10)
+async def sync_roles_task():
+    """Checks all members every 10 minutes and syncs roles."""
+    main_guild = bot.get_guild(MAIN_GUILD_ID)
+    appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
+
+    if not main_guild or not appeal_guild:
+        await debug_log("Role sync task failed: guild missing")
+        return
+
+    await debug_log("Starting role sync task")
+    for member in appeal_guild.members:
+        await sync_member_roles(member)
+    await debug_log("Finished role sync task")
 
 # ---------------- AUTO THUMBS UP ---------------- #
 
@@ -283,7 +336,6 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-
 async def react_to_old_messages():
     await bot.wait_until_ready()
     await debug_log("Starting historical reaction pass")
@@ -301,7 +353,6 @@ async def react_to_old_messages():
                 pass
 
     await debug_log("Finished historical reaction pass")
-
 
 # ---------------- APPEAL MODAL ---------------- #
 
@@ -338,7 +389,6 @@ class AppealModal(Modal):
 
         await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
         await debug_log(f"Appeal submitted by {interaction.user.id}")
-
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
 
@@ -387,7 +437,6 @@ class StaffReviewView(View):
 
         await debug_log(f"Appeal denied for {self.user_id} by {interaction.user.id}")
 
-
 # ---------------- APPEAL PANEL ---------------- #
 
 class AppealPanel(View):
@@ -422,7 +471,6 @@ class AppealPanel(View):
         except:
             await interaction.response.send_message("You are not banned in the main server.", ephemeral=True)
 
-
 # ---------------- SUPPORT PANEL ---------------- #
 
 class SupportView(View):
@@ -438,7 +486,6 @@ class SupportView(View):
     async def ingame_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
         await debug_log(f"In-game support ticket button pressed by {interaction.user.id}")
-
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
@@ -463,6 +510,35 @@ async def send_support_panel():
 
     await channel.send(embed=embed, view=SupportView())
     await debug_log("Support panel sent")
+
+# ---------------- AUTO APPEAL PANEL ---------------- #
+
+async def send_panel():
+    channel = bot.get_channel(PANEL_CHANNEL_ID)
+    if channel is None:
+        channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
+
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            return
+
+    embed = discord.Embed(
+        title="🏠 RoomMates VC Ban Appeals",
+        description=(
+            "Welcome to the **RoomMates VC Ban Appeal System**.\n\n"
+            "**How to appeal**\n"
+            "Press **🔨 DISCORD APPEAL** and complete the form.\n\n"
+            "**What happens next?**\n"
+            "• Staff will review your appeal.\n"
+            "• If accepted you will be notified.\n"
+            "• If declined after **7 days**, you may appeal again.\n\n"
+            "You can view your **ban reason** using the Ban Case button."
+        ),
+        color=discord.Color.green()
+    )
+
+    await channel.send(embed=embed, view=AppealPanel())
+    await debug_log("Appeal panel sent")
 # ---------------- SLOWMODE COMMAND ---------------- #
 
 @bot.tree.command(name="slowmode", description="Set slowmode for a channel")
@@ -494,7 +570,6 @@ async def slowmode(interaction: discord.Interaction, channel: discord.TextChanne
         print("SLOWMODE ERROR:", e)
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
 
-
 # ---------------- INVITES COMMAND ---------------- #
 
 @bot.tree.command(name="invites", description="Check how many invites a user has")
@@ -520,7 +595,6 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
 
     await interaction.response.send_message(embed=embed)
     await debug_log(f"/invites used by {interaction.user.id} for {user.id}")
-
 
 # ---------------- INVITETOP COMMAND ---------------- #
 
@@ -562,7 +636,6 @@ async def invitetop(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
     await debug_log(f"/invitetop used by {interaction.user.id}")
 
-
 # ---------------- ADD INVITE COMMAND ---------------- #
 
 @bot.tree.command(name="addinvite", description="Add invites to a user")
@@ -590,7 +663,6 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
     )
 
     await debug_log(f"/addinvite used by {interaction.user.id} on {user.id} (+{amount})")
-
 
 # ---------------- GIVEAWAY COMMAND ---------------- #
 
@@ -667,6 +739,7 @@ async def on_ready():
 
     # Start tasks
     check_bans.start()
+    sync_roles_task.start()
     bot.loop.create_task(react_to_old_messages())
 
     # Send panels if missing
@@ -680,7 +753,6 @@ async def on_ready():
     except Exception as e:
         print(f"[DEBUG] Failed to sync commands: {e}")
 
-
 # ---------------- MEMBER JOIN ---------------- #
 
 @bot.event
@@ -690,6 +762,7 @@ async def on_member_join(member):
     # Update ban roles if joining appeal server
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
+        await sync_member_roles(member)
 
     guild = member.guild
 
@@ -725,7 +798,6 @@ async def on_member_join(member):
             f"Invite used: member={member.id}, inviter={inviter_id}, code={used.code}, new_regular={regular}"
         )
 
-
 # ---------------- MEMBER LEAVE ---------------- #
 
 @bot.event
@@ -755,14 +827,12 @@ async def on_member_remove(member):
             f"Invite removed due to leave: member={member.id}, inviter={inviter_id}, new_regular={regular}, left={left_count}"
         )
 
-
 # ---------------- GAMELINK COMMAND ---------------- #
 
 @bot.command()
 async def gamelink(ctx):
     await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
     await debug_log(f"!gamelink used by {ctx.author.id}")
-
 
 # ---------------- RUN BOT ---------------- #
 
