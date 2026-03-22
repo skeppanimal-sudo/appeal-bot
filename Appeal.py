@@ -3,13 +3,84 @@ import os
 import asyncio
 import random
 import re
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta, UTC
 from discord.ext import commands, tasks
 from discord.ui import View, Modal, TextInput, Button
 from discord import app_commands
 
 TOKEN = os.getenv("TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ---------------- DEBUG CONFIG ---------------- #
+
+DEBUG_CHANNEL_ID = 1485269074962415777
+
+async def debug_log(text: str):
+    print(f"[DEBUG] {text}")
+    channel = bot.get_channel(DEBUG_CHANNEL_ID) if 'bot' in globals() else None
+    if channel:
+        try:
+            await channel.send(f"[DEBUG] {text}")
+        except:
+            pass
+
+# ---------------- POSTGRES DATABASE ---------------- #
+
+print("[DEBUG] Connecting to PostgreSQL...")
+conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+print("[DEBUG] Connected to PostgreSQL.")
+
+print("[DEBUG] Ensuring invites table exists...")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS invites (
+    user_id TEXT PRIMARY KEY,
+    regular INTEGER DEFAULT 0,
+    left INTEGER DEFAULT 0
+)
+""")
+conn.commit()
+print("[DEBUG] Invites table ready.")
+
+def get_invites(user_id: str):
+    print(f"[DEBUG] Fetching invites for {user_id}")
+    cursor.execute("SELECT regular, left FROM invites WHERE user_id = %s", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        print(f"[DEBUG] Found invites for {user_id}: regular={row['regular']}, left={row['left']}")
+        return row["regular"], row["left"]
+    print(f"[DEBUG] No invites found for {user_id}, returning 0,0")
+    return 0, 0
+
+def add_invite(user_id: str):
+    regular, left_count = get_invites(user_id)
+    regular += 1
+    cursor.execute("""
+        INSERT INTO invites (user_id, regular, left)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET regular = EXCLUDED.regular
+    """, (user_id, regular, left_count))
+    conn.commit()
+    print(f"[DEBUG] Saved invite for {user_id} (regular={regular}, left={left_count})")
+
+def remove_invite(user_id: str):
+    regular, left_count = get_invites(user_id)
+    if regular > 0:
+        regular -= 1
+        left_count += 1
+    cursor.execute("""
+        INSERT INTO invites (user_id, regular, left)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET regular = EXCLUDED.regular, left = EXCLUDED.left
+    """, (user_id, regular, left_count))
+    conn.commit()
+    print(f"[DEBUG] Removed invite for {user_id} (regular={regular}, left={left_count})")
+
+# ---------------- CONFIG ---------------- #
 
 MAIN_GUILD_ID = 1476717006764900372
 APPEAL_GUILD_ID = 1482442062862356573
@@ -24,74 +95,18 @@ ACCEPTED_CHANNEL = 1482442063592161594
 ACCEPTED_ROLE = 1482444757178388673
 
 SUPPORT_CHANNEL_ID = 1476717007717142735
-
 INVITE_CHANNEL = 1476717008010870813
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 invite_cache = {}
-
-# ---------------- DATABASE (AUTO-UPGRADE) ---------------- #
-
-conn = sqlite3.connect("invites.db")
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS invites (
-    user_id TEXT PRIMARY KEY,
-    regular INTEGER DEFAULT 0,
-    left INTEGER DEFAULT 0
-)
-""")
-
-try:
-    cursor.execute("SELECT count FROM invites LIMIT 1")
-    old_data = cursor.fetchall()
-
-    for row in old_data:
-        pass
-
-    cursor.execute("ALTER TABLE invites ADD COLUMN regular INTEGER DEFAULT 0")
-    cursor.execute("ALTER TABLE invites ADD COLUMN left INTEGER DEFAULT 0")
-
-    cursor.execute("UPDATE invites SET regular = count, left = 0")
-    cursor.execute("ALTER TABLE invites DROP COLUMN count")
-
-    conn.commit()
-except:
-    pass
-
-conn.commit()
-
-def get_invites(user_id: str):
-    cursor.execute("SELECT regular, left FROM invites WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    if row:
-        return row[0], row[1]
-    return 0, 0
-
-def add_invite(user_id: str):
-    regular, left_count = get_invites(user_id)
-    regular += 1
-    cursor.execute("INSERT OR REPLACE INTO invites (user_id, regular, left) VALUES (?, ?, ?)",
-                   (user_id, regular, left_count))
-    conn.commit()
-
-def remove_invite(user_id: str):
-    regular, left_count = get_invites(user_id)
-    if regular > 0:
-        regular -= 1
-        left_count += 1
-    cursor.execute("INSERT OR REPLACE INTO invites (user_id, regular, left) VALUES (?, ?, ?)",
-                   (user_id, regular, left_count))
-    conn.commit()
-
-# ---------------- GIVEAWAY STORAGE ---------------- #
-
 GIVEAWAYS = {}
 
+# ---------------- TIME PARSER ---------------- #
+
 def parse_time_string(time_str: str) -> timedelta:
+    print(f"[DEBUG] Parsing time string: {time_str}")
     pattern = r"(\d+)\s*([dhm])"
     matches = re.findall(pattern, time_str.lower())
     if not matches:
@@ -105,7 +120,9 @@ def parse_time_string(time_str: str) -> timedelta:
             total_seconds += amount * 3600
         elif unit == "m":
             total_seconds += amount * 60
+    print(f"[DEBUG] Parsed time '{time_str}' into {total_seconds} seconds")
     return timedelta(seconds=total_seconds)
+
 # ---------------- GIVEAWAY VIEW ---------------- #
 
 class GiveawayView(View):
@@ -126,6 +143,7 @@ class GiveawayView(View):
             return
 
         giveaway["entries"].add(user_id)
+        await debug_log(f"Giveaway join: user={user_id}, message_id={self.message_id}")
 
         try:
             message = await interaction.channel.fetch_message(self.message_id)
@@ -146,7 +164,6 @@ class GiveawayView(View):
         await message.edit(embed=embed, view=self)
         await interaction.response.send_message("You joined the giveaway!", ephemeral=True)
 
-
 # ---------------- END GIVEAWAY ---------------- #
 
 async def end_giveaway(message_id: int, channel_id: int):
@@ -158,6 +175,7 @@ async def end_giveaway(message_id: int, channel_id: int):
     now = datetime.now(UTC)
     remaining = (giveaway["end_time"] - now).total_seconds()
     if remaining > 0:
+        await debug_log(f"Giveaway {message_id} ending in {remaining} seconds")
         await asyncio.sleep(remaining)
 
     giveaway = GIVEAWAYS.get(message_id)
@@ -170,12 +188,14 @@ async def end_giveaway(message_id: int, channel_id: int):
             channel = await bot.fetch_channel(channel_id)
         except:
             GIVEAWAYS.pop(message_id, None)
+            await debug_log(f"Giveaway {message_id} channel not found, aborting")
             return
 
     try:
         message = await channel.fetch_message(message_id)
     except:
         GIVEAWAYS.pop(message_id, None)
+        await debug_log(f"Giveaway {message_id} message not found, aborting")
         return
 
     entries = list(giveaway["entries"])
@@ -202,12 +222,11 @@ async def end_giveaway(message_id: int, channel_id: int):
 
     await message.edit(embed=embed, view=None)
     GIVEAWAYS.pop(message_id, None)
-
+    await debug_log(f"Giveaway {message_id} ended. Winners: {winners_text}")
 
 # ---------------- BAN ROLE SYSTEM ---------------- #
 
 async def update_roles(member):
-
     main_guild = bot.get_guild(MAIN_GUILD_ID)
     appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
 
@@ -225,19 +244,21 @@ async def update_roles(member):
             await member.add_roles(banned_role)
         if not_banned_role in member.roles:
             await member.remove_roles(not_banned_role)
+        await debug_log(f"Ban roles updated: {member.id} marked as banned")
     else:
         if not_banned_role not in member.roles:
             await member.add_roles(not_banned_role)
         if banned_role in member.roles:
             await member.remove_roles(banned_role)
-
+        await debug_log(f"Ban roles updated: {member.id} marked as not banned")
 
 @tasks.loop(minutes=10)
 async def check_bans():
     guild = bot.get_guild(APPEAL_GUILD_ID)
+    await debug_log("Starting periodic ban check")
     for member in guild.members:
         await update_roles(member)
-
+    await debug_log("Finished periodic ban check")
 
 # ---------------- AUTO THUMBS UP ---------------- #
 
@@ -249,56 +270,46 @@ REACTION_CHANNELS = [
 
 @bot.event
 async def on_message(message):
-
     if message.author.bot:
         return
 
     if message.channel.id in REACTION_CHANNELS:
         try:
             await message.add_reaction("👍")
-        except:
-            pass
+            await debug_log(f"Added 👍 reaction in channel {message.channel.id} for message {message.id}")
+        except Exception as e:
+            print(f"[DEBUG] Failed to add reaction: {e}")
 
     await bot.process_commands(message)
 
-
 async def react_to_old_messages():
-
     await bot.wait_until_ready()
-
+    await debug_log("Starting historical reaction pass")
     for channel_id in REACTION_CHANNELS:
-
         channel = bot.get_channel(channel_id)
-
         if channel is None:
             continue
-
         async for message in channel.history(limit=None):
-
             try:
                 if not any(str(r.emoji) == "👍" for r in message.reactions):
                     await message.add_reaction("👍")
             except:
                 pass
-
+    await debug_log("Finished historical reaction pass")
 
 # ---------------- APPEAL MODAL ---------------- #
 
 class AppealModal(Modal):
-
     def __init__(self):
         super().__init__(title="RoomMates Ban Appeal")
-
         self.username = TextInput(label="What's your username?")
         self.justified = TextInput(label="Do you think your ban was justified?", style=discord.TextStyle.paragraph)
         self.reason = TextInput(label="Why should you be unbanned?", style=discord.TextStyle.paragraph)
-
         self.add_item(self.username)
         self.add_item(self.justified)
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction):
-
         review_channel = bot.get_channel(APPEAL_REVIEW_CHANNEL)
         main_guild = bot.get_guild(MAIN_GUILD_ID)
 
@@ -316,22 +327,19 @@ class AppealModal(Modal):
         embed.add_field(name="Why Unban?", value=self.reason.value, inline=False)
 
         view = StaffReviewView(interaction.user.id)
-
         await review_channel.send(embed=embed, view=view)
         await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
-
+        await debug_log(f"Appeal submitted by {interaction.user.id}")
 
 # ---------------- STAFF REVIEW BUTTONS ---------------- #
 
 class StaffReviewView(View):
-
     def __init__(self, user_id):
         super().__init__(timeout=None)
         self.user_id = user_id
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         main_guild = bot.get_guild(MAIN_GUILD_ID)
         appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
         accepted_channel = bot.get_channel(ACCEPTED_CHANNEL)
@@ -356,35 +364,32 @@ class StaffReviewView(View):
 
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message("Appeal accepted.", ephemeral=True)
+        await debug_log(f"Appeal accepted for {self.user_id} by {interaction.user.id}")
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.add_field(name="Result", value=f"Denied by {interaction.user.mention}", inline=False)
 
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message("Appeal denied.", ephemeral=True)
-
+        await debug_log(f"Appeal denied for {self.user_id} by {interaction.user.id}")
 
 # ---------------- APPEAL PANEL ---------------- #
 
 class AppealPanel(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="DISCORD APPEAL", style=discord.ButtonStyle.success, emoji="🔨", custom_id="appeal_here")
     async def appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         banned_role = interaction.guild.get_role(BANNED_ROLE_ID)
-
         if banned_role not in interaction.user.roles:
             await interaction.response.send_message("You cannot appeal because you are not banned.", ephemeral=True)
             return
-
         await interaction.response.send_modal(AppealModal())
+        await debug_log(f"Appeal modal opened for {interaction.user.id}")
 
     @discord.ui.button(label="GAME APPEAL", style=discord.ButtonStyle.primary, emoji="🎮", custom_id="game_appeal")
     async def game_appeal(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -392,40 +397,34 @@ class AppealPanel(View):
 
     @discord.ui.button(label="Ban Case", style=discord.ButtonStyle.secondary, emoji="📄", custom_id="ban_case")
     async def case(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         main_guild = bot.get_guild(MAIN_GUILD_ID)
-
         try:
             ban = await main_guild.fetch_ban(interaction.user)
             reason = ban.reason or "No reason provided"
-
             embed = discord.Embed(title="Your Ban Case", description=f"Reason: {reason}", color=discord.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
-
+            await debug_log(f"Ban case shown to {interaction.user.id}")
         except:
             await interaction.response.send_message("You are not banned in the main server.", ephemeral=True)
-
 
 # ---------------- SUPPORT PANEL ---------------- #
 
 class SupportView(View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩", custom_id="support_discord")
     async def discord_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("Support ticket feature not connected yet.", ephemeral=True)
+        await debug_log(f"Discord support ticket button pressed by {interaction.user.id}")
 
     @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
     async def ingame_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
-
+        await debug_log(f"In-game support ticket button pressed by {interaction.user.id}")
 
 async def send_support_panel():
-
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
-
     if channel is None:
         channel = await bot.fetch_channel(SUPPORT_CHANNEL_ID)
 
@@ -446,14 +445,12 @@ async def send_support_panel():
     )
 
     await channel.send(embed=embed, view=SupportView())
-
+    await debug_log("Support panel sent")
 
 # ---------------- AUTO PANEL ---------------- #
 
 async def send_panel():
-
     channel = bot.get_channel(PANEL_CHANNEL_ID)
-
     async for msg in channel.history(limit=20):
         if msg.author == bot.user:
             return
@@ -474,7 +471,7 @@ async def send_panel():
     )
 
     await channel.send(embed=embed, view=AppealPanel())
-
+    await debug_log("Appeal panel sent")
 
 # ---------------- SLOWMODE COMMAND ---------------- #
 
@@ -485,26 +482,26 @@ async def send_panel():
 )
 @app_commands.checks.has_permissions(manage_channels=True)
 async def slowmode(interaction: discord.Interaction, channel: discord.TextChannel, time: int):
-
     if time < 0:
         await interaction.response.send_message("Slowmode time cannot be negative.", ephemeral=True)
         return
-
     try:
         await channel.edit(slowmode_delay=time)
         if time == 0:
             await interaction.response.send_message(f"Slowmode disabled in {channel.mention}.", ephemeral=True)
+            await debug_log(f"Slowmode disabled in channel {channel.id} by {interaction.user.id}")
         else:
             await interaction.response.send_message(f"Slowmode set to **{time} seconds** in {channel.mention}.", ephemeral=True)
+            await debug_log(f"Slowmode set to {time}s in channel {channel.id} by {interaction.user.id}")
     except Exception as e:
         print("SLOWMODE ERROR:", e)
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
+
 # ---------------- INVITES COMMAND ---------------- #
 
 @bot.tree.command(name="invites", description="Check how many invites a user has")
 @app_commands.describe(user="User to check")
 async def invites(interaction: discord.Interaction, user: discord.Member = None):
-
     if user is None:
         user = interaction.user
 
@@ -515,18 +512,54 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
         description=f"You currently have **{regular} invites.**",
         color=discord.Color.from_rgb(255, 255, 255)
     )
-
     embed.add_field(
         name="Invites",
         value=f"{regular} regular\n{left_count} left",
         inline=False
     )
-
     embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
 
     await interaction.response.send_message(embed=embed)
+    await debug_log(f"/invites used by {interaction.user.id} for {user.id}")
 
+# ---------------- INVITETOP COMMAND ---------------- #
+
+@bot.tree.command(name="invitetop", description="Show the top inviters in the server")
+async def invitetop(interaction: discord.Interaction):
+    cursor.execute("""
+        SELECT user_id, regular, left
+        FROM invites
+        ORDER BY regular DESC
+        LIMIT 10
+    """)
+    rows = cursor.fetchall()
+
+    if not rows:
+        await interaction.response.send_message("No invite data found.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🏆 Top Inviters",
+        color=discord.Color.from_rgb(255, 255, 255)
+    )
+
+    description = ""
+    for index, row in enumerate(rows, start=1):
+        user_id = int(row["user_id"])
+        regular = row["regular"]
+        left_count = row["left"]
+        user = interaction.guild.get_member(user_id) or await bot.fetch_user(user_id)
+        description += (
+            f"**#{index} — {user.mention if user else user_id}**\n"
+            f"Invites: **{regular}** | Left: **{left_count}**\n\n"
+        )
+
+    embed.description = description
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+
+    await interaction.response.send_message(embed=embed)
+    await debug_log(f"/invitetop used by {interaction.user.id}")
 
 # ---------------- ADD INVITE COMMAND ---------------- #
 
@@ -534,7 +567,6 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(user="User to add invites to", amount="How many invites to add")
 async def addinvite(interaction: discord.Interaction, user: discord.Member, amount: int):
-
     if amount < 1:
         await interaction.response.send_message("Amount must be at least 1.", ephemeral=True)
         return
@@ -542,17 +574,19 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
     regular, left_count = get_invites(str(user.id))
     regular += amount
 
-    cursor.execute(
-        "INSERT OR REPLACE INTO invites (user_id, regular, left) VALUES (?, ?, ?)",
-        (str(user.id), regular, left_count)
-    )
+    cursor.execute("""
+        INSERT INTO invites (user_id, regular, left)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET regular = EXCLUDED.regular
+    """, (str(user.id), regular, left_count))
     conn.commit()
 
     await interaction.response.send_message(
         f"Added **{amount} invites** to {user.mention}. They now have **{regular} regular invites**.",
         ephemeral=True
     )
-
+    await debug_log(f"/addinvite used by {interaction.user.id} on {user.id} (+{amount})")
 
 # ---------------- GIVEAWAY COMMAND ---------------- #
 
@@ -564,7 +598,6 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
 )
 @app_commands.checks.has_permissions(manage_guild=True)
 async def giveaway(interaction: discord.Interaction, title: str, time: str, winnercount: int):
-
     try:
         delta = parse_time_string(time)
     except ValueError as e:
@@ -604,25 +637,27 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
-
+    await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
 
 # ---------------- READY EVENT ---------------- #
 
 @bot.event
 async def on_ready():
+    print(f"[DEBUG] Logged in as {bot.user}")
+    await debug_log(f"Bot ready as {bot.user} (ID: {bot.user.id})")
 
-    print(f"Logged in as {bot.user}")
-
-    # Cache invites
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
             invite_cache[guild.id] = {i.code: i.uses for i in invites}
+            await debug_log(f"Invite cache built for guild {guild.id}")
         except:
             invite_cache[guild.id] = {}
+            await debug_log(f"Failed to build invite cache for guild {guild.id}")
 
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
+    await debug_log("Persistent views registered")
 
     check_bans.start()
     bot.loop.create_task(react_to_old_messages())
@@ -632,21 +667,19 @@ async def on_ready():
 
     try:
         await bot.tree.sync()
-        print("Slash commands synced.")
+        await debug_log("Slash commands synced")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        print(f"[DEBUG] Failed to sync commands: {e}")
 
-
-# ---------------- MEMBER JOIN (APPEALS + INVITES) ---------------- #
+# ---------------- MEMBER JOIN ---------------- #
 
 @bot.event
 async def on_member_join(member):
+    await debug_log(f"Member joined: {member.id} in guild {member.guild.id}")
 
-    # Appeal guild role sync
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
 
-    # Invite tracking
     guild = member.guild
     try:
         invites = await guild.invites()
@@ -654,7 +687,6 @@ async def on_member_join(member):
         return
 
     used = None
-
     for invite in invites:
         if invite.uses > invite_cache.get(guild.id, {}).get(invite.code, 0):
             used = invite
@@ -673,23 +705,23 @@ async def on_member_join(member):
                 f"{member.mention} joined using {used.inviter.mention}'s invite! "
                 f"They now have **{regular} invites.**"
             )
+        await debug_log(
+            f"Invite used: member={member.id}, inviter={inviter_id}, code={used.code}, new_regular={regular}"
+        )
 
-
-# ---------------- MEMBER LEAVE (REMOVE INVITE) ---------------- #
+# ---------------- MEMBER LEAVE ---------------- #
 
 @bot.event
 async def on_member_remove(member):
+    await debug_log(f"Member left: {member.id} in guild {member.guild.id}")
 
     guild = member.guild
-
-    # This is a heuristic: remove 1 invite from the top inviter
     cursor.execute("SELECT user_id, regular FROM invites ORDER BY regular DESC LIMIT 1")
     row = cursor.fetchone()
 
     if row:
-        inviter_id = row[0]
+        inviter_id = row["user_id"]
         remove_invite(inviter_id)
-
         regular, left_count = get_invites(inviter_id)
 
         channel = bot.get_channel(INVITE_CHANNEL)
@@ -699,15 +731,18 @@ async def on_member_remove(member):
                 f"Removed **1 invite** from <@{inviter_id}>.\n"
                 f"They now have **{regular} regular** and **{left_count} left** invites."
             )
-
+        await debug_log(
+            f"Invite removed due to leave: member={member.id}, inviter={inviter_id}, new_regular={regular}, left={left_count}"
+        )
 
 # ---------------- GAMELINK COMMAND ---------------- #
 
 @bot.command()
 async def gamelink(ctx):
     await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
-
+    await debug_log(f"!gamelink used by {ctx.author.id}")
 
 # ---------------- RUN BOT ---------------- #
 
+print("[DEBUG] Starting bot...")
 bot.run(TOKEN)
