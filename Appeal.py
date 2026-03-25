@@ -484,9 +484,18 @@ async def react_to_old_messages():
 class AppealModal(Modal):
     def __init__(self):
         super().__init__(title="RoomMates Ban Appeal")
-        self.username = TextInput(label="What's your username?")
-        self.justified = TextInput(label="Do you think your ban was justified?", style=discord.TextStyle.paragraph)
-        self.reason = TextInput(label="Why should you be unbanned?", style=discord.TextStyle.paragraph)
+
+        self.username = TextInput(
+            label="What's your username?"
+        )
+        self.justified = TextInput(
+            label="Do you think your ban was justified?",
+            style=discord.TextStyle.paragraph
+        )
+        self.reason = TextInput(
+            label="Why should you be unbanned?",
+            style=discord.TextStyle.paragraph
+        )
 
         self.add_item(self.username)
         self.add_item(self.justified)
@@ -502,7 +511,10 @@ class AppealModal(Modal):
         except:
             ban_reason = "Unknown"
 
-        embed = discord.Embed(title="New Ban Appeal", color=discord.Color.orange())
+        embed = discord.Embed(
+            title="New Ban Appeal",
+            color=discord.Color.orange()
+        )
         embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=False)
         embed.add_field(name="Username", value=self.username.value, inline=False)
         embed.add_field(name="Ban Reason", value=ban_reason, inline=False)
@@ -515,15 +527,39 @@ class AppealModal(Modal):
 
 class AppealPanel(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # REQUIRED for persistent views
 
-    @discord.ui.button(label="DISCORD APPEAL", style=discord.ButtonStyle.success, emoji="🔨")
+    @discord.ui.button(
+        label="DISCORD APPEAL",
+        style=discord.ButtonStyle.success,
+        emoji="🔨",
+        custom_id="appeal_button"  # REQUIRED for persistent views
+    )
     async def appeal(self, interaction: discord.Interaction, button):
         banned_role = interaction.guild.get_role(BANNED_ROLE_ID)
+
         if banned_role not in interaction.user.roles:
             await interaction.response.send_message("You are not banned.", ephemeral=True)
             return
+
         await interaction.response.send_modal(AppealModal())
+
+
+async def send_panel():
+    channel = bot.get_channel(PANEL_CHANNEL_ID)
+
+    # Prevent duplicates
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            return
+
+    embed = discord.Embed(
+        title="🏠 RoomMates VC Ban Appeals",
+        description="Press **DISCORD APPEAL** to submit a ban appeal.",
+        color=discord.Color.green()
+    )
+
+    await channel.send(embed=embed, view=AppealPanel())
 
 
 # ---------------- SUPPORT PANEL ---------------- #
