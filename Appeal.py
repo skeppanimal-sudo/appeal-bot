@@ -750,7 +750,7 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
 
 @bot.tree.command(name="giveaway", description="Create a giveaway")
 @app_commands.describe(
-    title="Title
+    title="Title"
     # ---------------- READY EVENT ---------------- #
 
 @bot.event
