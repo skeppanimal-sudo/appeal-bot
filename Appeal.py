@@ -748,9 +748,62 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
 
 # ---------------- GIVEAWAY COMMAND ---------------- #
 
+# ---------------- GIVEAWAY COMMAND ---------------- #
+
 @bot.tree.command(name="giveaway", description="Create a giveaway")
 @app_commands.describe(
-    title="Title"
+    title="Title of the giveaway",
+    time="Duration like '1h 30m', '2h', '45m', '1d 2h'",
+    winnercount="Number of winners"
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def giveaway(interaction: discord.Interaction, title: str, time: str, winnercount: int):
+    try:
+        delta = parse_time_string(time)
+    except ValueError as e:
+        await interaction.response.send_message(str(e), ephemeral=True)
+        return
+
+    if winnercount < 1:
+        await interaction.response.send_message("Winner count must be at least 1.", ephemeral=True)
+        return
+
+    end_time = datetime.now(UTC) + delta
+    unix = int(end_time.timestamp())
+
+    embed = discord.Embed(title=title, color=discord.Color.from_rgb(255, 255, 255))
+    embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
+    embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
+    embed.add_field(name="Entries", value="**0**", inline=False)
+
+    # Store winner count in footer for recovery
+    embed.set_footer(text=f"Winners:{winnercount}")
+
+    await interaction.response.defer()
+    message = await interaction.channel.send(embed=embed)
+
+    GIVEAWAYS[message.id] = {
+        "entries": set(),
+        "end_time": end_time,
+        "winner_count": winnercount,
+        "title": title,
+        "host_id": interaction.user.id,
+        "channel_id": interaction.channel.id
+    }
+
+    view = GiveawayView(message.id)
+    await message.edit(view=view)
+
+    bot.loop.create_task(end_giveaway(message.id, interaction.channel.id))
+
+    await interaction.followup.send(
+        f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
+        ephemeral=True
+    )
+
+    await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
+
+
     # ---------------- READY EVENT ---------------- #
 
 @bot.event
