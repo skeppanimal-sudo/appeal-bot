@@ -16,6 +16,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # ---------------- DEBUG CONFIG ---------------- #
 
 DEBUG_CHANNEL_ID = 1485269074962415777
+THREAD_TARGET_CHANNEL_ID = 1486456524187631869 # The channel you specified
 
 async def debug_log(text: str):
     print(f"[DEBUG] {text}")
@@ -128,6 +129,20 @@ def parse_time_string(time_str: str) -> timedelta:
     print(f"[DEBUG] Parsed time '{time_str}' into {total_seconds} seconds")
     return timedelta(seconds=total_seconds)
 
+# ---------------- THREAD AUTO-CLOSE ---------------- #
+
+@bot.event
+async def on_thread_create(thread):
+    # Closes thread after 120 seconds in the specific channel
+    if thread.parent_id == THREAD_TARGET_CHANNEL_ID:
+        await debug_log(f"Thread detected in target channel: {thread.name}. Closing in 120s.")
+        await asyncio.sleep(120)
+        try:
+            await thread.edit(locked=True, archived=True)
+            await debug_log(f"Thread {thread.id} successfully closed and locked.")
+        except Exception as e:
+            await debug_log(f"Error closing thread {thread.id}: {e}")
+
 # ---------------- GIVEAWAY VIEW ---------------- #
 
 class GiveawayView(View):
@@ -228,6 +243,7 @@ async def end_giveaway(message_id: int, channel_id: int):
     await message.edit(embed=embed, view=None)
     GIVEAWAYS.pop(message_id, None)
     await debug_log(f"Giveaway {message_id} ended. Winners: {winners_text}")
+
 # ---------------- BAN ROLE SYSTEM ---------------- #
 
 async def update_roles(member):
@@ -301,7 +317,7 @@ async def sync_member_roles(member):
 
 @tasks.loop(seconds=60)
 async def sync_roles_task():
-    """Checks all members every 10 seconds and syncs roles."""
+    """Checks all members every 60 seconds and syncs roles."""
     main_guild = bot.get_guild(MAIN_GUILD_ID)
     appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
 
@@ -539,6 +555,7 @@ async def send_panel():
 
     await channel.send(embed=embed, view=AppealPanel())
     await debug_log("Appeal panel sent")
+
 # ---------------- SLOWMODE COMMAND ---------------- #
 
 @bot.tree.command(name="slowmode", description="Set slowmode for a channel")
@@ -715,6 +732,7 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
     )
 
     await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
+
 # ---------------- READY EVENT ---------------- #
 
 @bot.event
@@ -806,7 +824,7 @@ async def on_member_remove(member):
 
     guild = member.guild
 
-    # This logic removes 1 invite from the top inviter (your original logic)
+    # This logic removes 1 invite from the top inviter (original logic)
     cursor.execute("SELECT user_id, regular FROM invites ORDER BY regular DESC LIMIT 1")
     row = cursor.fetchone()
 
