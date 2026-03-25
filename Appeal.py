@@ -547,6 +547,183 @@ async def send_panel():
     )
 
     await channel.send(embed=embed, view=AppealPanel())
+# ---------------- SLOWMODE COMMAND ---------------- #
+
+@bot.tree.command(name="slowmode", description="Set slowmode for a channel")
+@app_commands.describe(
+    channel="Channel to apply slowmode to",
+    time="Slowmode duration in seconds (0 to disable)"
+)
+@app_commands.checks.has_permissions(manage_channels=True)
+async def slowmode(interaction: discord.Interaction, channel: discord.TextChannel, time: int):
+    if time < 0:
+        await interaction.response.send_message("Slowmode time cannot be negative.", ephemeral=True)
+        return
+
+    try:
+        await channel.edit(slowmode_delay=time)
+
+        if time == 0:
+            await interaction.response.send_message(
+                f"Slowmode disabled in {channel.mention}.", ephemeral=True
+            )
+            await debug_log(f"Slowmode disabled in channel {channel.id} by {interaction.user.id}")
+        else:
+            await interaction.response.send_message(
+                f"Slowmode set to **{time} seconds** in {channel.mention}.", ephemeral=True
+            )
+            await debug_log(f"Slowmode set to {time}s in channel {channel.id} by {interaction.user.id}")
+
+    except Exception as e:
+        print("SLOWMODE ERROR:", e)
+        await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
+
+# ---------------- INVITES COMMAND ---------------- #
+
+@bot.tree.command(name="invites", description="Check how many invites a user has")
+@app_commands.describe(user="User to check")
+async def invites(interaction: discord.Interaction, user: discord.Member = None):
+    if user is None:
+        user = interaction.user
+
+    regular, left_count = get_invites(str(user.id))
+
+    embed = discord.Embed(
+        title=f"{user.display_name}",
+        description=f"You currently have **{regular} invites.**",
+        color=discord.Color.from_rgb(255, 255, 255)
+    )
+    embed.add_field(
+        name="Invites",
+        value=f"{regular} regular\n{left_count} left",
+        inline=False
+    )
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+
+    await interaction.response.send_message(embed=embed)
+    await debug_log(f"/invites used by {interaction.user.id} for {user.id}")
+
+# ---------------- INVITETOP COMMAND ---------------- #
+
+@bot.tree.command(name="invitetop", description="Show the top inviters in the server")
+async def invitetop(interaction: discord.Interaction):
+    cursor.execute("""
+        SELECT user_id, regular, left_count
+        FROM invites
+        ORDER BY regular DESC
+        LIMIT 10
+    """)
+    rows = cursor.fetchall()
+
+    if not rows:
+        await interaction.response.send_message("No invite data found.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🏆 Top Inviters",
+        color=discord.Color.from_rgb(255, 255, 255)
+    )
+
+    description = ""
+    for index, row in enumerate(rows, start=1):
+        user_id = int(row["user_id"])
+        regular = row["regular"]
+        left_count = row["left_count"]
+
+        user = interaction.guild.get_member(user_id) or await bot.fetch_user(user_id)
+
+        description += (
+            f"**#{index} — {user.mention if user else user_id}**\n"
+            f"Invites: **{regular}** | Left: **{left_count}**\n\n"
+        )
+
+    embed.description = description
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+
+    await interaction.response.send_message(embed=embed)
+    await debug_log(f"/invitetop used by {interaction.user.id}")
+
+# ---------------- ADD INVITE COMMAND ---------------- #
+
+@bot.tree.command(name="addinvite", description="Add invites to a user")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(user="User to add invites to", amount="How many invites to add")
+async def addinvite(interaction: discord.Interaction, user: discord.Member, amount: int):
+    if amount < 1:
+        await interaction.response.send_message("Amount must be at least 1.", ephemeral=True)
+        return
+
+    regular, left_count = get_invites(str(user.id))
+    regular += amount
+
+    cursor.execute("""
+        INSERT INTO invites (user_id, regular, left_count)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET regular = EXCLUDED.regular
+    """, (str(user.id), regular, left_count))
+    conn.commit()
+
+    await interaction.response.send_message(
+        f"Added **{amount} invites** to {user.mention}. They now have **{regular} regular invites**.",
+        ephemeral=True
+    )
+
+    await debug_log(f"/addinvite used by {interaction.user.id} on {user.id} (+{amount})")
+
+# ---------------- GIVEAWAY COMMAND ---------------- #
+
+@bot.tree.command(name="giveaway", description="Create a giveaway")
+@app_commands.describe(
+    title="Title of the giveaway",
+    time="Duration like '1h 30m', '2h', '45m', '1d 2h'",
+    winnercount="Number of winners"
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def giveaway(interaction: discord.Interaction, title: str, time: str, winnercount: int):
+    try:
+        delta = parse_time_string(time)
+    except ValueError as e:
+        await interaction.response.send_message(str(e), ephemeral=True)
+        return
+
+    if winnercount < 1:
+        await interaction.response.send_message("Winner count must be at least 1.", ephemeral=True)
+        return
+
+    end_time = datetime.now(UTC) + delta
+    unix = int(end_time.timestamp())
+
+    embed = discord.Embed(title=title, color=discord.Color.from_rgb(255, 255, 255))
+    embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
+    embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
+    embed.add_field(name="Entries", value="**0**", inline=False)
+
+    await interaction.response.defer()
+    message = await interaction.channel.send(embed=embed)
+
+    GIVEAWAYS[message.id] = {
+        "entries": set(),
+        "end_time": end_time,
+        "winner_count": winnercount,
+        "title": title,
+        "host_id": interaction.user.id,
+        "channel_id": interaction.channel.id
+    }
+
+    view = GiveawayView(message.id)
+    await message.edit(view=view)
+
+    bot.loop.create_task(end_giveaway(message.id, interaction.channel.id))
+
+    await interaction.followup.send(
+        f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
+        ephemeral=True
+    )
+
+    await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
+
 
 # ---------------- READY EVENT ---------------- #
 
