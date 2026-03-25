@@ -566,15 +566,25 @@ async def send_panel():
 
 class SupportView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # REQUIRED for persistent views
 
-    @discord.ui.button(label="Create Discord Support Ticket", style=discord.ButtonStyle.success, emoji="📩")
+    @discord.ui.button(
+        label="Create Discord Support Ticket",
+        style=discord.ButtonStyle.success,
+        emoji="📩",
+        custom_id="support_ticket_button"  # REQUIRED for persistent views
+    )
     async def discord_ticket(self, interaction: discord.Interaction, button):
-        await interaction.response.send_message("Support ticket system not connected yet.", ephemeral=True)
+        await interaction.response.send_message(
+            "Support ticket system not connected yet.",
+            ephemeral=True
+        )
 
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
+
+    # Prevent duplicate panels
     async for msg in channel.history(limit=20):
         if msg.author == bot.user:
             return
@@ -584,22 +594,8 @@ async def send_support_panel():
         description="Need help? Open a ticket.",
         color=discord.Color.purple()
     )
+
     await channel.send(embed=embed, view=SupportView())
-
-
-async def send_panel():
-    channel = bot.get_channel(PANEL_CHANNEL_ID)
-    async for msg in channel.history(limit=20):
-        if msg.author == bot.user:
-            return
-
-    embed = discord.Embed(
-        title="🏠 RoomMates VC Ban Appeals",
-        description="Press **DISCORD APPEAL** to submit a ban appeal.",
-        color=discord.Color.green()
-    )
-    await channel.send(embed=embed, view=AppealPanel())
-
 
 # ---------------- AUTO‑LOCK SYSTEM ---------------- #
 
