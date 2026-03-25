@@ -16,7 +16,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # ---------------- DEBUG CONFIG ---------------- #
 
 DEBUG_CHANNEL_ID = 1485269074962415777
-THREAD_TARGET_CHANNEL_ID = 1486456524187631869 # The channel you specified
 
 async def debug_log(text: str):
     print(f"[DEBUG] {text}")
@@ -99,6 +98,10 @@ ACCEPTED_ROLE = 1482444757178388673
 SUPPORT_CHANNEL_ID = 1476717007717142735
 INVITE_CHANNEL = 1476717008010870813
 
+# Giveaway + auto-lock specific
+GIVEAWAY_CHANNEL_ID = 1476717007717142731
+AUTO_LOCK_CHANNEL_ID = 1486456524187631869
+
 # --- AUTO ROLE SYNC (MAIN → APPEAL) --- #
 MAIN_SYNC_ROLE = 1485407866453102732      # Role in main server
 APPEAL_SYNC_ROLE = 1482444572687859773    # Role to give in appeal server
@@ -128,21 +131,6 @@ def parse_time_string(time_str: str) -> timedelta:
             total_seconds += amount * 60
     print(f"[DEBUG] Parsed time '{time_str}' into {total_seconds} seconds")
     return timedelta(seconds=total_seconds)
-
-# ---------------- THREAD AUTO-CLOSE ---------------- #
-
-@bot.event
-async def on_thread_create(thread):
-    # Closes thread after 120 seconds in the specific channel
-    if thread.parent_id == THREAD_TARGET_CHANNEL_ID:
-        await debug_log(f"Thread detected in target channel: {thread.name}. Closing in 120s.")
-        await asyncio.sleep(120)
-        try:
-            await thread.edit(locked=True, archived=True)
-            await debug_log(f"Thread {thread.id} successfully closed and locked.")
-        except Exception as e:
-            await debug_log(f"Error closing thread {thread.id}: {e}")
-
 # ---------------- GIVEAWAY VIEW ---------------- #
 
 class GiveawayView(View):
@@ -180,6 +168,8 @@ class GiveawayView(View):
         embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
         embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
         embed.add_field(name="Entries", value=f"**{len(giveaway['entries'])}**", inline=False)
+        # keep winner count in footer for recovery
+        embed.set_footer(text=f"Winners:{giveaway['winner_count']}")
 
         await message.edit(embed=embed, view=self)
         await interaction.response.send_message("You joined the giveaway!", ephemeral=True)
@@ -239,10 +229,86 @@ async def end_giveaway(message_id: int, channel_id: int):
     embed.add_field(name="Hosted by", value=f"<@{giveaway['host_id']}>", inline=False)
     embed.add_field(name="Entries", value=f"**{len(entries)}**", inline=False)
     embed.add_field(name="Winners", value=winners_text, inline=False)
+    embed.set_footer(text=f"Winners:{giveaway['winner_count']}")
 
     await message.edit(embed=embed, view=None)
     GIVEAWAYS.pop(message_id, None)
     await debug_log(f"Giveaway {message_id} ended. Winners: {winners_text}")
+
+# ---------------- GIVEAWAY RECOVERY ---------------- #
+
+async def recover_giveaways():
+    await bot.wait_until_ready()
+    await debug_log("Starting giveaway recovery")
+
+    channel = bot.get_channel(GIVEAWAY_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(GIVEAWAY_CHANNEL_ID)
+        except:
+            await debug_log(f"Giveaway recovery failed: channel {GIVEAWAY_CHANNEL_ID} not found")
+            return
+
+    async for message in channel.history(limit=200):
+        if not message.embeds:
+            continue
+
+        embed = message.embeds[0]
+        ends_field = next((f for f in embed.fields if f.name == "Ends"), None)
+        hosted_field = next((f for f in embed.fields if f.name == "Hosted by"), None)
+
+        if not ends_field or not hosted_field:
+            continue
+
+        # parse end timestamp
+        m = re.search(r"<t:(\d+):", ends_field.value)
+        if not m:
+            continue
+        end_unix = int(m.group(1))
+        end_time = datetime.fromtimestamp(end_unix, tz=UTC)
+
+        now = datetime.now(UTC)
+        if end_time <= now:
+            # already ended, skip
+            continue
+
+        # parse host id
+        host_match = re.search(r"<@!?(\d+)>", hosted_field.value)
+        if host_match:
+            host_id = int(host_match.group(1))
+        else:
+            host_id = message.author.id
+
+        # parse winner count from footer if present
+        winner_count = 1
+        if embed.footer and embed.footer.text:
+            wm = re.search(r"Winners:(\d+)", embed.footer.text)
+            if wm:
+                try:
+                    winner_count = int(wm.group(1))
+                except:
+                    winner_count = 1
+
+        # rebuild giveaway object with empty entries (can't recover past joins)
+        GIVEAWAYS[message.id] = {
+            "entries": set(),
+            "end_time": end_time,
+            "winner_count": winner_count,
+            "title": embed.title or "Giveaway",
+            "host_id": host_id,
+            "channel_id": channel.id
+        }
+
+        view = GiveawayView(message.id)
+        try:
+            await message.edit(view=view)
+        except:
+            pass
+
+        bot.loop.create_task(end_giveaway(message.id, channel.id))
+        await debug_log(f"Recovered active giveaway message_id={message.id}, ends_at={end_time.isoformat()}")
+
+    await debug_log("Finished giveaway recovery")
 
 # ---------------- BAN ROLE SYSTEM ---------------- #
 
@@ -369,8 +435,7 @@ async def react_to_old_messages():
                 pass
 
     await debug_log("Finished historical reaction pass")
-
-# ---------------- APPEAL MODAL ---------------- #
+    # ---------------- APPEAL MODAL ---------------- #
 
 class AppealModal(Modal):
     def __init__(self):
@@ -685,55 +750,8 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
 
 @bot.tree.command(name="giveaway", description="Create a giveaway")
 @app_commands.describe(
-    title="Title of the giveaway",
-    time="Duration like '1h 30m', '2h', '45m', '1d 2h'",
-    winnercount="Number of winners"
-)
-@app_commands.checks.has_permissions(manage_guild=True)
-async def giveaway(interaction: discord.Interaction, title: str, time: str, winnercount: int):
-    try:
-        delta = parse_time_string(time)
-    except ValueError as e:
-        await interaction.response.send_message(str(e), ephemeral=True)
-        return
-
-    if winnercount < 1:
-        await interaction.response.send_message("Winner count must be at least 1.", ephemeral=True)
-        return
-
-    end_time = datetime.now(UTC) + delta
-    unix = int(end_time.timestamp())
-
-    embed = discord.Embed(title=title, color=discord.Color.from_rgb(255, 255, 255))
-    embed.add_field(name="Ends", value=f"<t:{unix}:R>", inline=False)
-    embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
-    embed.add_field(name="Entries", value="**0**", inline=False)
-
-    await interaction.response.defer()
-    message = await interaction.channel.send(embed=embed)
-
-    GIVEAWAYS[message.id] = {
-        "entries": set(),
-        "end_time": end_time,
-        "winner_count": winnercount,
-        "title": title,
-        "host_id": interaction.user.id,
-        "channel_id": interaction.channel.id
-    }
-
-    view = GiveawayView(message.id)
-    await message.edit(view=view)
-
-    bot.loop.create_task(end_giveaway(message.id, interaction.channel.id))
-
-    await interaction.followup.send(
-        f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
-        ephemeral=True
-    )
-
-    await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
-
-# ---------------- READY EVENT ---------------- #
+    title="Title
+    # ---------------- READY EVENT ---------------- #
 
 @bot.event
 async def on_ready():
@@ -759,6 +777,8 @@ async def on_ready():
     check_bans.start()
     sync_roles_task.start()
     bot.loop.create_task(react_to_old_messages())
+    bot.loop.create_task(recover_giveaways())
+    bot.loop.create_task(lock_channel_after_24h())
 
     # Send panels if missing
     await send_panel()
@@ -824,7 +844,7 @@ async def on_member_remove(member):
 
     guild = member.guild
 
-    # This logic removes 1 invite from the top inviter (original logic)
+    # This logic removes 1 invite from the top inviter (your original logic)
     cursor.execute("SELECT user_id, regular FROM invites ORDER BY regular DESC LIMIT 1")
     row = cursor.fetchone()
 
@@ -856,3 +876,4 @@ async def gamelink(ctx):
 
 print("[DEBUG] Starting bot...")
 bot.run(TOKEN)
+
