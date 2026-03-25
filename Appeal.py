@@ -97,8 +97,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 invite_cache = {}
 GIVEAWAYS = {}
 
-# ---------------- TIME PARSER ---------------- #
-
 def parse_time_string(time_str: str) -> timedelta:
     pattern = r"(\d+)\s*([dhm])"
     matches = re.findall(pattern, time_str.lower())
@@ -114,9 +112,6 @@ def parse_time_string(time_str: str) -> timedelta:
         elif unit == "m":
             total_seconds += amount * 60
     return timedelta(seconds=total_seconds)
-
-# ---------------- GIVEAWAY VIEW ---------------- #
-
 class GiveawayView(View):
     def __init__(self, message_id: int):
         super().__init__(timeout=None)
@@ -154,8 +149,6 @@ class GiveawayView(View):
 
         await message.edit(embed=embed, view=self)
         await interaction.response.send_message("You joined the giveaway!", ephemeral=True)
-
-# ---------------- END GIVEAWAY ---------------- #
 
 async def end_giveaway(message_id: int, channel_id: int):
     await bot.wait_until_ready()
@@ -211,8 +204,6 @@ async def end_giveaway(message_id: int, channel_id: int):
     await message.edit(embed=embed, view=None)
     GIVEAWAYS.pop(message_id, None)
 
-# ---------------- BAN ROLE SYSTEM ---------------- #
-
 async def update_roles(member):
     main_guild = bot.get_guild(MAIN_GUILD_ID)
     appeal_guild = bot.get_guild(APPEAL_GUILD_ID)
@@ -242,8 +233,6 @@ async def check_bans():
     guild = bot.get_guild(APPEAL_GUILD_ID)
     for member in guild.members:
         await update_roles(member)
-
-# ---------------- ROLE SYNC MAIN → APPEAL ---------------- #
 
 async def sync_member_roles(member):
     main_guild = bot.get_guild(MAIN_GUILD_ID)
@@ -278,9 +267,6 @@ async def sync_roles_task():
 
     for member in appeal_guild.members:
         await sync_member_roles(member)
-
-# ---------------- AUTO THUMBS UP ---------------- #
-
 REACTION_CHANNELS = [
     1482516620730433625,
     1478798153288384624,
@@ -315,8 +301,6 @@ async def react_to_old_messages():
             except:
                 pass
 
-# ---------------- AUTO LOCK THREADS ---------------- #
-
 @bot.event
 async def on_thread_update(before: discord.Thread, after: discord.Thread):
     if after.archived and not after.locked:
@@ -340,8 +324,6 @@ async def auto_lock_existing_threads():
                         await thread.edit(locked=True)
                     except:
                         pass
-
-# ---------------- AUTO CLOSE THREADS AFTER 24 HOURS ---------------- #
 
 @tasks.loop(minutes=10)
 async def auto_close_old_threads():
@@ -368,8 +350,6 @@ async def auto_close_old_threads():
                 await thread.edit(archived=True, locked=True)
             except:
                 pass
-
-# ---------------- APPEAL MODAL ---------------- #
 
 class AppealModal(Modal):
     def __init__(self):
@@ -403,8 +383,6 @@ class AppealModal(Modal):
         await review_channel.send(embed=embed, view=view)
 
         await interaction.response.send_message("Your appeal has been submitted.", ephemeral=True)
-
-# ---------------- STAFF REVIEW BUTTONS ---------------- #
 
 class StaffReviewView(View):
     def __init__(self, user_id):
@@ -446,9 +424,6 @@ class StaffReviewView(View):
 
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message("Appeal denied.", ephemeral=True)
-
-# ---------------- APPEAL PANEL ---------------- #
-
 class AppealPanel(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -478,8 +453,6 @@ class AppealPanel(View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except:
             await interaction.response.send_message("You are not banned in the main server.", ephemeral=True)
-
-# ---------------- SUPPORT PANEL ---------------- #
 
 class SupportView(View):
     def __init__(self):
@@ -516,13 +489,7 @@ async def send_support_panel():
 
     await channel.send(embed=embed, view=SupportView())
 
-# ---------------- AUTO APPEAL PANEL ---------------- #
-
 async def send_panel():
-    channel = bot.get_channel(PANEL_CHANNEL_ID)
-    if channel is None:
-        channel = await bot.fetch_channel
-        async def send_panel():
     channel = bot.get_channel(PANEL_CHANNEL_ID)
     if channel is None:
         channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
@@ -547,7 +514,6 @@ async def send_panel():
     )
 
     await channel.send(embed=embed, view=AppealPanel())
-# ---------------- SLOWMODE COMMAND ---------------- #
 
 @bot.tree.command(name="slowmode", description="Set slowmode for a channel")
 @app_commands.describe(
@@ -567,19 +533,13 @@ async def slowmode(interaction: discord.Interaction, channel: discord.TextChanne
             await interaction.response.send_message(
                 f"Slowmode disabled in {channel.mention}.", ephemeral=True
             )
-            await debug_log(f"Slowmode disabled in channel {channel.id} by {interaction.user.id}")
         else:
             await interaction.response.send_message(
                 f"Slowmode set to **{time} seconds** in {channel.mention}.", ephemeral=True
             )
-            await debug_log(f"Slowmode set to {time}s in channel {channel.id} by {interaction.user.id}")
 
-    except Exception as e:
-        print("SLOWMODE ERROR:", e)
+    except Exception:
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
-
-# ---------------- INVITES COMMAND ---------------- #
-
 @bot.tree.command(name="invites", description="Check how many invites a user has")
 @app_commands.describe(user="User to check")
 async def invites(interaction: discord.Interaction, user: discord.Member = None):
@@ -602,9 +562,6 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
 
     await interaction.response.send_message(embed=embed)
-    await debug_log(f"/invites used by {interaction.user.id} for {user.id}")
-
-# ---------------- INVITETOP COMMAND ---------------- #
 
 @bot.tree.command(name="invitetop", description="Show the top inviters in the server")
 async def invitetop(interaction: discord.Interaction):
@@ -642,9 +599,6 @@ async def invitetop(interaction: discord.Interaction):
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
 
     await interaction.response.send_message(embed=embed)
-    await debug_log(f"/invitetop used by {interaction.user.id}")
-
-# ---------------- ADD INVITE COMMAND ---------------- #
 
 @bot.tree.command(name="addinvite", description="Add invites to a user")
 @app_commands.checks.has_permissions(manage_guild=True)
@@ -669,10 +623,6 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
         f"Added **{amount} invites** to {user.mention}. They now have **{regular} regular invites**.",
         ephemeral=True
     )
-
-    await debug_log(f"/addinvite used by {interaction.user.id} on {user.id} (+{amount})")
-
-# ---------------- GIVEAWAY COMMAND ---------------- #
 
 @bot.tree.command(name="giveaway", description="Create a giveaway")
 @app_commands.describe(
@@ -721,56 +671,36 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
-
-    await debug_log(f"Giveaway created: title='{title}', message_id={message.id}, host={interaction.user.id}")
-
-
-# ---------------- READY EVENT ---------------- #
-
 @bot.event
 async def on_ready():
     print(f"[DEBUG] Logged in as {bot.user}")
-    await debug_log(f"Bot ready as {bot.user} (ID: {bot.user.id})")
 
-    # Build invite cache
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
             invite_cache[guild.id] = {i.code: i.uses for i in invites}
-            await debug_log(f"Invite cache built for guild {guild.id}")
         except:
             invite_cache[guild.id] = {}
-            await debug_log(f"Failed to build invite cache for guild {guild.id}")
 
-    # Register persistent views
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
-    await debug_log("Persistent views registered")
 
-    # Start tasks
     check_bans.start()
     sync_roles_task.start()
     bot.loop.create_task(react_to_old_messages())
     auto_lock_existing_threads.start()
     auto_close_old_threads.start()
 
-    # Send panels if missing
     await send_panel()
     await send_support_panel()
 
-    # Sync slash commands
     try:
         await bot.tree.sync()
-        await debug_log("Slash commands synced")
-    except Exception as e:
-        print(f"[DEBUG] Failed to sync commands: {e}")
-
-# ---------------- MEMBER JOIN ---------------- #
+    except:
+        pass
 
 @bot.event
 async def on_member_join(member):
-    await debug_log(f"Member joined: {member.id} in guild {member.guild.id}")
-
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
         await sync_member_roles(member)
@@ -803,16 +733,8 @@ async def on_member_join(member):
                 f"They now have **{regular} invites.**"
             )
 
-        await debug_log(
-            f"Invite used: member={member.id}, inviter={inviter_id}, code={used.code}, new_regular={regular}"
-        )
-
-# ---------------- MEMBER LEAVE ---------------- #
-
 @bot.event
 async def on_member_remove(member):
-    await debug_log(f"Member left: {member.id} in guild {member.guild.id}")
-
     guild = member.guild
 
     cursor.execute("SELECT user_id, regular FROM invites ORDER BY regular DESC LIMIT 1")
@@ -831,18 +753,9 @@ async def on_member_remove(member):
                 f"They now have **{regular} regular** and **{left_count} left** invites."
             )
 
-        await debug_log(
-            f"Invite removed due to leave: member={member.id}, inviter={inviter_id}, new_regular={regular}, left={left_count}"
-        )
-
-# ---------------- GAMELINK COMMAND ---------------- #
-
 @bot.command()
 async def gamelink(ctx):
     await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
-    await debug_log(f"!gamelink used by {ctx.author.id}")
-
-# ---------------- RUN BOT ---------------- #
 
 print("[DEBUG] Starting bot...")
 bot.run(TOKEN)
