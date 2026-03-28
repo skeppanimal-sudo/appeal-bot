@@ -39,6 +39,18 @@ CREATE TABLE IF NOT EXISTS invites (
 """)
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS infractions (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    moderator_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    reason TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+conn.commit()
+
 def get_invites(user_id: str):
     cursor.execute("SELECT regular, left_count FROM invites WHERE user_id = %s", (user_id,))
     row = cursor.fetchone()
@@ -68,6 +80,13 @@ def remove_invite(user_id: str):
         ON CONFLICT (user_id)
         DO UPDATE SET regular = EXCLUDED.regular, left_count = EXCLUDED.left_count
     """, (user_id, regular, left_count))
+    conn.commit()
+
+def log_infraction(user_id: str, moderator_id: str, action: str, reason: str):
+    cursor.execute("""
+        INSERT INTO infractions (user_id, moderator_id, action, reason)
+        VALUES (%s, %s, %s, %s)
+    """, (user_id, moderator_id, action, reason))
     conn.commit()
 
 MAIN_GUILD_ID = 1476717006764900372
@@ -786,6 +805,92 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
+
+@bot.tree.command(name="warn", description="Warn a user and save it to the database")
+@app_commands.describe(user="User to warn", reason="Reason for the warning")
+async def warn(interaction: discord.Interaction, user: discord.Member, reason: str):
+    log_infraction(str(user.id), str(interaction.user.id), "warn", reason)
+
+    embed = discord.Embed(
+        description=f"⚠️ **{user.mention} has been warned**\n{reason}",
+        color=discord.Color.from_rgb(32, 34, 37)
+    )
+    embed.set_footer(text="")
+    embed.set_author(name="")
+
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="kick", description="Kick a user and log it")
+@app_commands.checks.has_permissions(kick_members=True)
+@app_commands.describe(user="User to kick", reason="Reason for the kick")
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str):
+    try:
+        await user.kick(reason=reason)
+    except:
+        await interaction.response.send_message("Failed to kick user.", ephemeral=True)
+        return
+
+    log_infraction(str(user.id), str(interaction.user.id), "kick", reason)
+
+    embed = discord.Embed(
+        description="✔️ **Must have been the wind…**",
+        color=discord.Color.from_rgb(32, 34, 37)
+    )
+    embed.set_footer(text="")
+    embed.set_author(name="")
+
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="ban", description="Ban a user and log it")
+@app_commands.checks.has_permissions(ban_members=True)
+@app_commands.describe(user="User to ban", reason="Reason for the ban")
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str):
+    try:
+        await user.ban(reason=reason)
+    except:
+        await interaction.response.send_message("Failed to ban user.", ephemeral=True)
+        return
+
+    log_infraction(str(user.id), str(interaction.user.id), "ban", reason)
+
+    embed = discord.Embed(
+        description="✔️ **Must have been the wind…**",
+        color=discord.Color.from_rgb(32, 34, 37)
+    )
+    embed.set_footer(text="")
+    embed.set_author(name="")
+
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="infractions", description="View a user's infractions")
+@app_commands.describe(user="User to check")
+async def infractions(interaction: discord.Interaction, user: discord.Member):
+    cursor.execute("""
+        SELECT action, reason, timestamp, moderator_id
+        FROM infractions
+        WHERE user_id = %s
+        ORDER BY timestamp DESC
+    """, (str(user.id),))
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        await interaction.response.send_message(f"{user.mention} has no infractions.")
+        return
+
+    embed = discord.Embed(
+        title=f"📄 Infractions for {user.display_name}",
+        color=discord.Color.from_rgb(32, 34, 37)
+    )
+
+    for action, reason, timestamp, mod_id in rows:
+        embed.add_field(
+            name=f"{action.upper()} — <@{mod_id}>",
+            value=f"**Reason:** {reason}\n<t:{int(timestamp.timestamp())}:R>",
+            inline=False
+        )
+
+    await interaction.response.send_message(embed=embed)
 
 @bot.event
 async def on_ready():
