@@ -524,7 +524,8 @@ class ChannelSelect(discord.ui.Select):
             placeholder="Select a channel...",
             min_values=1,
             max_values=1,
-            options=options
+            options=options,
+            custom_id="message_panel_channel_select"  # persistent
         )
 
     async def callback(self, interaction: discord.Interaction):
