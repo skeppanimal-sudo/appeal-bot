@@ -500,47 +500,64 @@ class MessageModal(Modal):
         )
 
 class ChannelSelect(discord.ui.Select):
-    def __init__(self):
-        options = []
-        for channel in bot.get_all_channels():
-            if isinstance(channel, discord.TextChannel):
-                options.append(
-                    discord.SelectOption(
-                        label=channel.name,
-                        value=str(channel.id)
-                    )
-                )
-
-        if not options:
-            options.append(
-                discord.SelectOption(
-                    label="No text channels available",
-                    value="none",
-                    description="There are no text channels I can see."
-                )
-            )
+    def __init__(self, channels, page):
+        self.page = page
+        options = [
+            discord.SelectOption(label=ch.name, value=str(ch.id))
+            for ch in channels
+        ]
 
         super().__init__(
-            placeholder="Select a channel...",
+            placeholder=f"Select a channel... (Page {page})",
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="message_panel_channel_select"  # persistent
+            custom_id=f"message_panel_select_page_{page}"
         )
 
     async def callback(self, interaction: discord.Interaction):
-        if self.values[0] == "none":
-            await interaction.response.send_message("No valid channels to send to.", ephemeral=True)
-            return
-
         channel_id = int(self.values[0])
         modal = MessageModal(channel_id)
         await interaction.response.send_modal(modal)
 
+class NextPageButton(discord.ui.Button):
+    def __init__(self, page):
+        super().__init__(label="Next Page ➜", style=discord.ButtonStyle.primary, custom_id=f"next_page_{page}")
+
+    async def callback(self, interaction: discord.Interaction):
+        new_page = int(self.custom_id.split("_")[-1]) + 1
+        await interaction.response.edit_message(view=MessagePanel(new_page))
+
+class PrevPageButton(discord.ui.Button):
+    def __init__(self, page):
+        super().__init__(label="⬅ Previous Page", style=discord.ButtonStyle.secondary, custom_id=f"prev_page_{page}")
+
+    async def callback(self, interaction: discord.Interaction):
+        new_page = int(self.custom_id.split("_")[-1]) - 1
+        await interaction.response.edit_message(view=MessagePanel(new_page))
+
 class MessagePanel(View):
-    def __init__(self):
+    def __init__(self, page=1):
         super().__init__(timeout=None)
-        self.add_item(ChannelSelect())
+        self.page = page
+
+        all_channels = [c for c in bot.get_all_channels() if isinstance(c, discord.TextChannel)]
+
+        per_page = 25
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_channels = all_channels[start:end]
+
+        if not page_channels:
+            page_channels = all_channels[:per_page]
+
+        self.add_item(ChannelSelect(page_channels, page))
+
+        if start > 0:
+            self.add_item(PrevPageButton(page))
+
+        if end < len(all_channels):
+            self.add_item(NextPageButton(page))
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
@@ -596,8 +613,8 @@ async def send_message_panel():
     if channel is None:
         channel = await bot.fetch_channel(MESSAGE_PANEL_CHANNEL_ID)
 
-    async for msg in channel.history(limit=20):
-        if msg.author == bot.user:
+    async for msg in channel.history(limit=50):
+        if msg.author == bot.user and msg.embeds and msg.embeds[0].title == "📨 Message Sender Panel":
             return
 
     embed = discord.Embed(
