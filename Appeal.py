@@ -91,6 +91,8 @@ APPEAL_SYNC_ROLE = 1482444572687859773
 TARGET_THREAD_CHANNEL = 1486456524187631869
 THREAD_LIFETIME = 24 * 60 * 60
 
+MESSAGE_PANEL_CHANNEL_ID = 1487531080335626380
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -112,6 +114,7 @@ def parse_time_string(time_str: str) -> timedelta:
         elif unit == "m":
             total_seconds += amount * 60
     return timedelta(seconds=total_seconds)
+
 class GiveawayView(View):
     def __init__(self, message_id: int):
         super().__init__(timeout=None)
@@ -267,6 +270,7 @@ async def sync_roles_task():
 
     for member in appeal_guild.members:
         await sync_member_roles(member)
+
 REACTION_CHANNELS = [
     1482516620730433625,
     1478798153288384624,
@@ -424,6 +428,7 @@ class StaffReviewView(View):
 
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message("Appeal denied.", ephemeral=True)
+
 class AppealPanel(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -465,6 +470,76 @@ class SupportView(View):
     @discord.ui.button(label="Create In-game Support Ticket", style=discord.ButtonStyle.secondary, emoji="📩", custom_id="support_ingame")
     async def ingame_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("In-game support not connected yet.", ephemeral=True)
+
+class MessageModal(Modal):
+    def __init__(self, channel_id: int):
+        super().__init__(title="Send a Message")
+        self.channel_id = channel_id
+
+        self.message_input = TextInput(
+            label="What do you want to send?",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=2000
+        )
+
+        self.add_item(self.message_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.client.get_channel(self.channel_id)
+
+        if channel is None:
+            await interaction.response.send_message("Channel not found.", ephemeral=True)
+            return
+
+        await channel.send(self.message_input.value)
+
+        await interaction.response.send_message(
+            f"Message sent in {channel.mention}.",
+            ephemeral=True
+        )
+
+class ChannelSelect(discord.ui.Select):
+    def __init__(self):
+        options = []
+        for channel in bot.get_all_channels():
+            if isinstance(channel, discord.TextChannel):
+                options.append(
+                    discord.SelectOption(
+                        label=channel.name,
+                        value=str(channel.id)
+                    )
+                )
+
+        if not options:
+            options.append(
+                discord.SelectOption(
+                    label="No text channels available",
+                    value="none",
+                    description="There are no text channels I can see."
+                )
+            )
+
+        super().__init__(
+            placeholder="Select a channel...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message("No valid channels to send to.", ephemeral=True)
+            return
+
+        channel_id = int(self.values[0])
+        modal = MessageModal(channel_id)
+        await interaction.response.send_modal(modal)
+
+class MessagePanel(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(ChannelSelect())
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
@@ -515,6 +590,27 @@ async def send_panel():
 
     await channel.send(embed=embed, view=AppealPanel())
 
+async def send_message_panel():
+    channel = bot.get_channel(MESSAGE_PANEL_CHANNEL_ID)
+    if channel is None:
+        channel = await bot.fetch_channel(MESSAGE_PANEL_CHANNEL_ID)
+
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            return
+
+    embed = discord.Embed(
+        title="📨 Message Sender Panel",
+        description=(
+            "Select a channel from the dropdown below.\n"
+            "You will be asked what message you want to send.\n"
+            "The bot will send it in the selected channel."
+        ),
+        color=discord.Color.blue()
+    )
+
+    await channel.send(embed=embed, view=MessagePanel())
+
 @bot.tree.command(name="slowmode", description="Set slowmode for a channel")
 @app_commands.describe(
     channel="Channel to apply slowmode to",
@@ -540,6 +636,7 @@ async def slowmode(interaction: discord.Interaction, channel: discord.TextChanne
 
     except Exception:
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
+
 @bot.tree.command(name="invites", description="Check how many invites a user has")
 @app_commands.describe(user="User to check")
 async def invites(interaction: discord.Interaction, user: discord.Member = None):
@@ -671,6 +768,7 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
+
 @bot.event
 async def on_ready():
     print(f"[DEBUG] Logged in as {bot.user}")
@@ -684,6 +782,7 @@ async def on_ready():
 
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
+    bot.add_view(MessagePanel())
 
     check_bans.start()
     sync_roles_task.start()
@@ -693,6 +792,7 @@ async def on_ready():
 
     await send_panel()
     await send_support_panel()
+    await send_message_panel()
 
     try:
         await bot.tree.sync()
