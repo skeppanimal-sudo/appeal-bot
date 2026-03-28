@@ -39,18 +39,6 @@ CREATE TABLE IF NOT EXISTS invites (
 """)
 conn.commit()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS infractions (
-    id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    moderator_id TEXT NOT NULL,
-    action TEXT NOT NULL,
-    reason TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-conn.commit()
-
 def get_invites(user_id: str):
     cursor.execute("SELECT regular, left_count FROM invites WHERE user_id = %s", (user_id,))
     row = cursor.fetchone()
@@ -80,13 +68,6 @@ def remove_invite(user_id: str):
         ON CONFLICT (user_id)
         DO UPDATE SET regular = EXCLUDED.regular, left_count = EXCLUDED.left_count
     """, (user_id, regular, left_count))
-    conn.commit()
-
-def log_infraction(user_id: str, moderator_id: str, action: str, reason: str):
-    cursor.execute("""
-        INSERT INTO infractions (user_id, moderator_id, action, reason)
-        VALUES (%s, %s, %s, %s)
-    """, (user_id, moderator_id, action, reason))
     conn.commit()
 
 MAIN_GUILD_ID = 1476717006764900372
@@ -519,64 +500,46 @@ class MessageModal(Modal):
         )
 
 class ChannelSelect(discord.ui.Select):
-    def __init__(self, channels, page):
-        self.page = page
-        options = [
-            discord.SelectOption(label=ch.name, value=str(ch.id))
-            for ch in channels
-        ]
+    def __init__(self):
+        options = []
+        for channel in bot.get_all_channels():
+            if isinstance(channel, discord.TextChannel):
+                options.append(
+                    discord.SelectOption(
+                        label=channel.name,
+                        value=str(channel.id)
+                    )
+                )
+
+        if not options:
+            options.append(
+                discord.SelectOption(
+                    label="No text channels available",
+                    value="none",
+                    description="There are no text channels I can see."
+                )
+            )
 
         super().__init__(
-            placeholder=f"Select a channel... (Page {page})",
+            placeholder="Select a channel...",
             min_values=1,
             max_values=1,
-            options=options,
-            custom_id=f"message_panel_select_page_{page}"
+            options=options
         )
 
     async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message("No valid channels to send to.", ephemeral=True)
+            return
+
         channel_id = int(self.values[0])
         modal = MessageModal(channel_id)
         await interaction.response.send_modal(modal)
 
-class NextPageButton(discord.ui.Button):
-    def __init__(self, page):
-        super().__init__(label="Next Page ➜", style=discord.ButtonStyle.primary, custom_id=f"next_page_{page}")
-
-    async def callback(self, interaction: discord.Interaction):
-        new_page = int(self.custom_id.split("_")[-1]) + 1
-        await interaction.response.edit_message(view=MessagePanel(new_page))
-
-class PrevPageButton(discord.ui.Button):
-    def __init__(self, page):
-        super().__init__(label="⬅ Previous Page", style=discord.ButtonStyle.secondary, custom_id=f"prev_page_{page}")
-
-    async def callback(self, interaction: discord.Interaction):
-        new_page = int(self.custom_id.split("_")[-1]) - 1
-        await interaction.response.edit_message(view=MessagePanel(new_page))
-
 class MessagePanel(View):
-    def __init__(self, page=1):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.page = page
-
-        all_channels = [c for c in bot.get_all_channels() if isinstance(c, discord.TextChannel)]
-
-        per_page = 25
-        start = (page - 1) * per_page
-        end = start + per_page
-        page_channels = all_channels[start:end]
-
-        if not page_channels:
-            page_channels = all_channels[:per_page]
-
-        self.add_item(ChannelSelect(page_channels, page))
-
-        if start > 0:
-            self.add_item(PrevPageButton(page))
-
-        if end < len(all_channels):
-            self.add_item(NextPageButton(page))
+        self.add_item(ChannelSelect())
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
@@ -632,8 +595,8 @@ async def send_message_panel():
     if channel is None:
         channel = await bot.fetch_channel(MESSAGE_PANEL_CHANNEL_ID)
 
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user and msg.embeds and msg.embeds[0].title == "📨 Message Sender Panel":
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
             return
 
     embed = discord.Embed(
@@ -805,92 +768,6 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
-
-@bot.tree.command(name="warn", description="Warn a user and save it to the database")
-@app_commands.describe(user="User to warn", reason="Reason for the warning")
-async def warn(interaction: discord.Interaction, user: discord.Member, reason: str):
-    log_infraction(str(user.id), str(interaction.user.id), "warn", reason)
-
-    embed = discord.Embed(
-        description=f"⚠️ **{user.mention} has been warned**\n{reason}",
-        color=discord.Color.from_rgb(32, 34, 37)
-    )
-    embed.set_footer(text="")
-    embed.set_author(name="")
-
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="kick", description="Kick a user and log it")
-@app_commands.checks.has_permissions(kick_members=True)
-@app_commands.describe(user="User to kick", reason="Reason for the kick")
-async def kick(interaction: discord.Interaction, user: discord.Member, reason: str):
-    try:
-        await user.kick(reason=reason)
-    except:
-        await interaction.response.send_message("Failed to kick user.", ephemeral=True)
-        return
-
-    log_infraction(str(user.id), str(interaction.user.id), "kick", reason)
-
-    embed = discord.Embed(
-        description="✔️ **Must have been the wind…**",
-        color=discord.Color.from_rgb(32, 34, 37)
-    )
-    embed.set_footer(text="")
-    embed.set_author(name="")
-
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="ban", description="Ban a user and log it")
-@app_commands.checks.has_permissions(ban_members=True)
-@app_commands.describe(user="User to ban", reason="Reason for the ban")
-async def ban(interaction: discord.Interaction, user: discord.Member, reason: str):
-    try:
-        await user.ban(reason=reason)
-    except:
-        await interaction.response.send_message("Failed to ban user.", ephemeral=True)
-        return
-
-    log_infraction(str(user.id), str(interaction.user.id), "ban", reason)
-
-    embed = discord.Embed(
-        description="✔️ **Must have been the wind…**",
-        color=discord.Color.from_rgb(32, 34, 37)
-    )
-    embed.set_footer(text="")
-    embed.set_author(name="")
-
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="infractions", description="View a user's infractions")
-@app_commands.describe(user="User to check")
-async def infractions(interaction: discord.Interaction, user: discord.Member):
-    cursor.execute("""
-        SELECT action, reason, timestamp, moderator_id
-        FROM infractions
-        WHERE user_id = %s
-        ORDER BY timestamp DESC
-    """, (str(user.id),))
-
-    rows = cursor.fetchall()
-
-    if not rows:
-        await interaction.response.send_message(f"{user.mention} has no infractions.")
-        return
-
-    embed = discord.Embed(
-        title=f"📄 Infractions for {user.display_name}",
-        color=discord.Color.from_rgb(32, 34, 37)
-    )
-
-    for action, reason, timestamp, mod_id in rows:
-        embed.add_field(
-            name=f"{action.upper()} — <@{mod_id}>",
-            value=f"**Reason:** {reason}\n<t:{int(timestamp.timestamp())}:R>",
-            inline=False
-        )
-
-    await interaction.response.send_message(embed=embed)
 
 @bot.event
 async def on_ready():
