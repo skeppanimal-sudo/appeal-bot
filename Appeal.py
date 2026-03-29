@@ -13,7 +13,7 @@ from discord import app_commands
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-DEBUG_CHANNEL_ID = 1485269074962415777
+DEBUG_CHANNEL_ID = 1487755467949211709
 
 print("[DEBUG] Connecting to PostgreSQL...")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
