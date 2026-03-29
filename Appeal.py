@@ -15,16 +15,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 DEBUG_CHANNEL_ID = 1485269074962415777
 
-async def debug_log(text: str):
-    print(f"[DEBUG] {text}")
-    if 'bot' in globals():
-        channel = bot.get_channel(DEBUG_CHANNEL_ID)
-        if channel:
-            try:
-                await channel.send(f"[DEBUG] {text}")
-            except:
-                pass
-
 print("[DEBUG] Connecting to PostgreSQL...")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -93,11 +83,24 @@ THREAD_LIFETIME = 24 * 60 * 60
 
 MESSAGE_PANEL_CHANNEL_ID = 1487531080335626380
 
+QOTD_ROLE_ID = 1480033021326524427
+QOTD_CHANNEL_ID = 1486456524187631869
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 invite_cache = {}
 GIVEAWAYS = {}
+
+async def debug_log(text: str):
+    print(f"[DEBUG] {text}")
+    if 'bot' in globals():
+        channel = bot.get_channel(DEBUG_CHANNEL_ID)
+        if channel:
+            try:
+                await channel.send(f"[DEBUG] {text}")
+            except:
+                pass
 
 def parse_time_string(time_str: str) -> timedelta:
     pattern = r"(\d+)\s*([dhm])"
@@ -536,6 +539,74 @@ class PrevPageButton(discord.ui.Button):
         new_page = int(self.custom_id.split("_")[-1]) - 1
         await interaction.response.edit_message(view=MessagePanel(new_page))
 
+class QOTDModal(Modal):
+    def __init__(self):
+        super().__init__(title="Create Question of the Day")
+
+        self.day_input = TextInput(
+            label="What day number is it?",
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=10
+        )
+
+        self.question_input = TextInput(
+            label="What question would you like to ask?",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=2000
+        )
+
+        self.add_item(self.day_input)
+        self.add_item(self.question_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.client.get_channel(QOTD_CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await interaction.client.fetch_channel(QOTD_CHANNEL_ID)
+            except:
+                await interaction.response.send_message("QOTD channel not found.", ephemeral=True)
+                return
+
+        day_str = self.day_input.value.strip()
+        question = self.question_input.value.strip()
+
+        content = (
+            f"<@{QOTD_ROLE_ID}>\n"
+            f"**Question of the Day #{day_str}:**\n"
+            f"{question}"
+        )
+
+        try:
+            msg = await channel.send(content)
+        except:
+            await interaction.response.send_message("Failed to send QOTD.", ephemeral=True)
+            return
+
+        thread_name = question
+        if len(thread_name) > 100:
+            thread_name = thread_name[:97] + "..."
+
+        try:
+            await msg.create_thread(name=thread_name)
+        except:
+            pass
+
+        await interaction.response.send_message("QOTD posted.", ephemeral=True)
+
+class QOTDButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Create QOTD",
+            style=discord.ButtonStyle.success,
+            emoji="❓",
+            custom_id="qotd_create_button"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(QOTDModal())
+
 class MessagePanel(View):
     def __init__(self, page=1):
         super().__init__(timeout=None)
@@ -558,6 +629,8 @@ class MessagePanel(View):
 
         if end < len(all_channels):
             self.add_item(NextPageButton(page))
+
+        self.add_item(QOTDButton())
 
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
@@ -622,13 +695,13 @@ async def send_message_panel():
         description=(
             "Select a channel from the dropdown below.\n"
             "You will be asked what message you want to send.\n"
-            "The bot will send it in the selected channel."
+            "The bot will send it in the selected channel.\n\n"
+            "Use the **Create QOTD** button to post a Question of the Day."
         ),
         color=discord.Color.blue()
     )
 
     await channel.send(embed=embed, view=MessagePanel())
-
 @bot.tree.command(name="slowmode", description="Set slowmode for a channel")
 @app_commands.describe(
     channel="Channel to apply slowmode to",
@@ -786,11 +859,11 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
-
 @bot.event
 async def on_ready():
     print(f"[DEBUG] Logged in as {bot.user}")
 
+    # Cache invites for all guilds
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
@@ -798,16 +871,19 @@ async def on_ready():
         except:
             invite_cache[guild.id] = {}
 
+    # Persistent views
     bot.add_view(AppealPanel())
     bot.add_view(SupportView())
     bot.add_view(MessagePanel())
 
+    # Background tasks
     check_bans.start()
     sync_roles_task.start()
     bot.loop.create_task(react_to_old_messages())
     auto_lock_existing_threads.start()
     auto_close_old_threads.start()
 
+    # Panels
     await send_panel()
     await send_support_panel()
     await send_message_panel()
@@ -817,14 +893,17 @@ async def on_ready():
     except:
         pass
 
+
 @bot.event
 async def on_member_join(member):
+    # Sync roles in appeal guild
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
         await sync_member_roles(member)
 
     guild = member.guild
 
+    # Track invites
     try:
         invites = await guild.invites()
     except:
@@ -851,6 +930,7 @@ async def on_member_join(member):
                 f"They now have **{regular} invites.**"
             )
 
+
 @bot.event
 async def on_member_remove(member):
     guild = member.guild
@@ -871,9 +951,11 @@ async def on_member_remove(member):
                 f"They now have **{regular} regular** and **{left_count} left** invites."
             )
 
+
 @bot.command()
 async def gamelink(ctx):
     await ctx.send("https://www.roblox.com/share?code=91a1d9f9e2d8234f9d477e1e75736b34&type=ExperienceDetails&stamp=1773867741632")
+
 
 print("[DEBUG] Starting bot...")
 bot.run(TOKEN)
