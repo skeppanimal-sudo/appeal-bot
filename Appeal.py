@@ -505,6 +505,9 @@ class MessageModal(Modal):
 class ChannelSelect(discord.ui.Select):
     def __init__(self, channels, page):
         self.page = page
+class ChannelSelect(discord.ui.Select):
+    def __init__(self, channels, page):
+        self.page = page
         options = [
             discord.SelectOption(label=ch.name, value=str(ch.id))
             for ch in channels
@@ -523,6 +526,7 @@ class ChannelSelect(discord.ui.Select):
         modal = MessageModal(channel_id)
         await interaction.response.send_modal(modal)
 
+
 class NextPageButton(discord.ui.Button):
     def __init__(self, page):
         super().__init__(label="Next Page ➜", style=discord.ButtonStyle.primary, custom_id=f"next_page_{page}")
@@ -531,6 +535,7 @@ class NextPageButton(discord.ui.Button):
         new_page = int(self.custom_id.split("_")[-1]) + 1
         await interaction.response.edit_message(view=MessagePanel(new_page))
 
+
 class PrevPageButton(discord.ui.Button):
     def __init__(self, page):
         super().__init__(label="⬅ Previous Page", style=discord.ButtonStyle.secondary, custom_id=f"prev_page_{page}")
@@ -538,6 +543,7 @@ class PrevPageButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         new_page = int(self.custom_id.split("_")[-1]) - 1
         await interaction.response.edit_message(view=MessagePanel(new_page))
+
 
 class QOTDModal(Modal):
     def __init__(self):
@@ -571,17 +577,18 @@ class QOTDModal(Modal):
 
         day_str = self.day_input.value.strip()
         question = self.question_input.value.strip()
-content = (
-    f"<@&{QOTD_ROLE_ID}>\n"
-    f"**Question of the Day #{day_str}:**\n"
-    f"{question}"
-)
 
-try:
-    msg = await channel.send(content)
-except:
-    await interaction.response.send_message("Failed to send QOTD.", ephemeral=True)
-    return
+        content = (
+            f"<@&{QOTD_ROLE_ID}>\n"
+            f"**Question of the Day #{day_str}:**\n"
+            f"{question}"
+        )
+
+        try:
+            msg = await channel.send(content)
+        except:
+            await interaction.response.send_message("Failed to send QOTD.", ephemeral=True)
+            return
 
         thread_name = question
         if len(thread_name) > 100:
@@ -594,6 +601,7 @@ except:
 
         await interaction.response.send_message("QOTD posted.", ephemeral=True)
 
+
 class QOTDButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
@@ -605,6 +613,7 @@ class QOTDButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(QOTDModal())
+
 
 class MessagePanel(View):
     def __init__(self, page=1):
@@ -631,6 +640,7 @@ class MessagePanel(View):
 
         self.add_item(QOTDButton())
 
+
 async def send_support_panel():
     channel = bot.get_channel(SUPPORT_CHANNEL_ID)
     if channel is None:
@@ -653,6 +663,7 @@ async def send_support_panel():
     )
 
     await channel.send(embed=embed, view=SupportView())
+
 
 async def send_panel():
     channel = bot.get_channel(PANEL_CHANNEL_ID)
@@ -679,6 +690,7 @@ async def send_panel():
     )
 
     await channel.send(embed=embed, view=AppealPanel())
+
 
 async def send_message_panel():
     channel = bot.get_channel(MESSAGE_PANEL_CHANNEL_ID)
@@ -727,6 +739,7 @@ async def slowmode(interaction: discord.Interaction, channel: discord.TextChanne
     except Exception:
         await interaction.response.send_message("Failed to update slowmode.", ephemeral=True)
 
+
 @bot.tree.command(name="invites", description="Check how many invites a user has")
 @app_commands.describe(user="User to check")
 async def invites(interaction: discord.Interaction, user: discord.Member = None):
@@ -749,6 +762,7 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
 
     await interaction.response.send_message(embed=embed)
+
 
 @bot.tree.command(name="invitetop", description="Show the top inviters in the server")
 async def invitetop(interaction: discord.Interaction):
@@ -787,6 +801,7 @@ async def invitetop(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+
 @bot.tree.command(name="addinvite", description="Add invites to a user")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(user="User to add invites to", amount="How many invites to add")
@@ -810,6 +825,7 @@ async def addinvite(interaction: discord.Interaction, user: discord.Member, amou
         f"Added **{amount} invites** to {user.mention}. They now have **{regular} regular invites**.",
         ephemeral=True
     )
+
 
 @bot.tree.command(name="giveaway", description="Create a giveaway")
 @app_commands.describe(
@@ -858,11 +874,13 @@ async def giveaway(interaction: discord.Interaction, title: str, time: str, winn
         f"Giveaway created for **{title}** ending at `<t:{unix}:R>`.",
         ephemeral=True
     )
+
+
 @bot.event
 async def on_ready():
     print(f"[DEBUG] Logged in as {bot.user}")
 
-    # Cache invites for all guilds
+    # Cache invites
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
@@ -895,14 +913,12 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    # Sync roles in appeal guild
     if member.guild.id == APPEAL_GUILD_ID:
         await update_roles(member)
         await sync_member_roles(member)
 
     guild = member.guild
 
-    # Track invites
     try:
         invites = await guild.invites()
     except:
