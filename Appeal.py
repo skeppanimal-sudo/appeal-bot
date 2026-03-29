@@ -573,7 +573,7 @@ class QOTDModal(Modal):
         question = self.question_input.value.strip()
 content = (
     f"<@&{QOTD_ROLE_ID}>\n"
-    
+    f""
     f"**Question of the Day #{day_str}:**\n"
     f"{question}"
         )
