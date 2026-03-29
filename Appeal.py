@@ -577,7 +577,6 @@ content = (
     f"**Question of the Day #{day_str}:**\n"
     f"{question}"
         )
-
         try:
             msg = await channel.send(content)
         except:
