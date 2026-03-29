@@ -573,15 +573,15 @@ class QOTDModal(Modal):
         question = self.question_input.value.strip()
 content = (
     f"<@&{QOTD_ROLE_ID}>\n"
-    f""
     f"**Question of the Day #{day_str}:**\n"
     f"{question}"
-        )
-        try:
-            msg = await channel.send(content)
-        except:
-            await interaction.response.send_message("Failed to send QOTD.", ephemeral=True)
-            return
+)
+
+try:
+    msg = await channel.send(content)
+except:
+    await interaction.response.send_message("Failed to send QOTD.", ephemeral=True)
+    return
 
         thread_name = question
         if len(thread_name) > 100:
