@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import os
 import asyncpg
-from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -119,18 +118,13 @@ async def create_ticket(interaction, title, fields):
     # ping
     await thread.send(f"{staff_role.mention} {interaction.user.mention}")
 
-    # embed
+    # embed (clean version)
     embed = discord.Embed(
         title=title,
-        color=discord.Color.blue(),
-        timestamp=datetime.utcnow()
+        color=discord.Color.blue()
     )
 
-    embed.add_field(name="Ticket Number", value=f"**#{ticket_number}**", inline=False)
-    embed.add_field(name="User ID", value=str(interaction.user.id), inline=False)
-    embed.add_field(name="Opened By", value=str(interaction.user), inline=False)
-    embed.add_field(name="Opened At", value=f"<t:{int(datetime.utcnow().timestamp())}:F>", inline=False)
-
+    # ONLY show modal fields — nothing extra
     for name, value in fields:
         embed.add_field(
             name=name,
