@@ -16,18 +16,21 @@ async def heh(ctx):
     if ctx.author.id != ALLOWED_USER_ID:
         return
 
-    # 🔹 Header
+    # 🔹 Header Embed
     header = discord.Embed(
         title="Dreamy VR Support System",
         description="Please use this system to get help safely and efficiently. Staff will assist you as soon as possible.",
         color=discord.Color.blue()
     )
 
-    # 🔹 Divider Embed
-    divider1 = discord.Embed(color=discord.Color.blue())
-    divider1.set_image(url=DIVIDER)
+    # blue divider inside embed
+    header.add_field(
+        name="\u200b",
+        value=f"[⠀]({DIVIDER})",
+        inline=False
+    )
 
-    # 🔹 Rules
+    # 🔹 Support Rules Embed
     support = discord.Embed(color=discord.Color.blue())
 
     support.add_field(name="1 • Open a Ticket", value="> Create a private support channel using the ticket system.", inline=True)
@@ -37,18 +40,28 @@ async def heh(ctx):
     support.add_field(name="5 • Follow Staff", value="> Listen to staff instructions during support.", inline=True)
     support.add_field(name="6 • No Troll Tickets", value="> Fake or joke tickets will result in punishment.", inline=True)
 
+    # divider at bottom of rules
+    support.add_field(
+        name="\u200b",
+        value=f"[⠀]({DIVIDER})",
+        inline=False
+    )
+
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔹 Divider 2
-    divider2 = discord.Embed(color=discord.Color.blue())
-    divider2.set_image(url=DIVIDER)
-
-    # 🔹 Image Embed (final)
+    # 🔹 Image Embed
     image_embed = discord.Embed(color=discord.Color.blue())
 
-    # padding to match size
+    # padding (to match height)
     for _ in range(6):
         image_embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+    # ONLY ONE divider (top of image section)
+    image_embed.add_field(
+        name="\u200b",
+        value=f"[⠀]({DIVIDER})",
+        inline=False
+    )
 
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
@@ -56,14 +69,13 @@ async def heh(ctx):
 
     image_embed.set_footer(text="Dreamy VR • Support System")
 
-    # 🔥 Send everything in order
+    # 🔥 Send
     await ctx.send(embed=header)
-    await ctx.send(embed=divider1)
     await ctx.send(embed=support)
-    await ctx.send(embed=divider2)
     await ctx.send(embed=image_embed)
 
 
+# Railway token
 token = os.getenv("TOKEN")
 if not token:
     raise ValueError("No TOKEN found")
