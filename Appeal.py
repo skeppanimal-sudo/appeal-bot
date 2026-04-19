@@ -9,110 +9,127 @@ bot = commands.Bot(command_prefix="?", intents=intents)
 
 ALLOWED_USER_ID = 1429110753683832985
 
+# 🔧 CHANGE THIS
+STAFF_ROLE_ID = 123456789012345678
+
+ticket_counter = 0
+
+
+# ================= THREAD CREATION =================
+
+async def create_ticket_thread(interaction, title, fields):
+    global ticket_counter
+    ticket_counter += 1
+
+    channel = interaction.channel
+
+    thread = await channel.create_thread(
+        name=f"ticket-{ticket_counter}",
+        type=discord.ChannelType.private_thread
+    )
+
+    staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+
+    # add user to thread
+    await thread.add_user(interaction.user)
+
+    # 🔥 ping staff + user
+    await thread.send(f"{staff_role.mention} {interaction.user.mention}")
+
+    # embed like your screenshot
+    embed = discord.Embed(title=title, color=discord.Color.blue())
+
+    for name, value in fields:
+        embed.add_field(name=name, value=f"`{value}`", inline=False)
+
+    await thread.send(embed=embed)
+
+
 # ================= MODALS =================
 
 class GeneralHelpModal(discord.ui.Modal, title="General Help"):
-    issue = discord.ui.TextInput(
-        label="What do you need help with?",
-        placeholder="Explain your issue...",
-        style=discord.TextStyle.paragraph,
-        required=True
-    )
-
-    details = discord.ui.TextInput(
-        label="Additional Details",
-        placeholder="Add more info if needed...",
-        style=discord.TextStyle.paragraph,
-        required=False
-    )
+    issue = discord.ui.TextInput(label="What do you need help with?", style=discord.TextStyle.paragraph)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ Help request submitted!", ephemeral=True)
+        await create_ticket_thread(
+            interaction,
+            "General Help Ticket",
+            [
+                ("User", str(interaction.user)),
+                ("Issue", self.issue.value)
+            ]
+        )
+        await interaction.response.send_message("✅ Ticket created!", ephemeral=True)
 
 
-class InGameReportModal(discord.ui.Modal, title="Report In-Game Member"):
-    username = discord.ui.TextInput(
-        label="Player Username",
-        placeholder="Enter their in-game name...",
-        required=True
-    )
-
-    issue = discord.ui.TextInput(
-        label="What happened?",
-        placeholder="Explain the situation...",
-        style=discord.TextStyle.paragraph,
-        required=True
-    )
-
-    proof = discord.ui.TextInput(
-        label="Do you have proof?",
-        placeholder="Yes / No + details",
-        required=True
-    )
+class InGameModal(discord.ui.Modal, title="Report In-Game Member"):
+    username = discord.ui.TextInput(label="Player Username")
+    issue = discord.ui.TextInput(label="What happened?", style=discord.TextStyle.paragraph)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ In-game report submitted!", ephemeral=True)
+        await create_ticket_thread(
+            interaction,
+            "In-Game Report",
+            [
+                ("Reporter", str(interaction.user)),
+                ("Player", self.username.value),
+                ("Issue", self.issue.value)
+            ]
+        )
+        await interaction.response.send_message("✅ Report submitted!", ephemeral=True)
 
 
-class CommunityReportModal(discord.ui.Modal, title="Report Community Member"):
-    discord_user = discord.ui.TextInput(
-        label="Is this about a Discord user?",
-        placeholder="Yes or No",
-        required=True
-    )
-
-    issue = discord.ui.TextInput(
-        label="What is the issue?",
-        placeholder="Explain what happened...",
-        style=discord.TextStyle.paragraph,
-        required=True
-    )
-
-    proof = discord.ui.TextInput(
-        label="Do you have proof?",
-        placeholder="Yes or No",
-        required=True
-    )
-
-    location = discord.ui.TextInput(
-        label="Did this happen in the Discord?",
-        placeholder="We only handle Discord issues",
-        required=True
-    )
+class CommunityModal(discord.ui.Modal, title="Report Community Member"):
+    user = discord.ui.TextInput(label="Discord User")
+    issue = discord.ui.TextInput(label="What happened?", style=discord.TextStyle.paragraph)
+    proof = discord.ui.TextInput(label="Do you have proof?")
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ Community report submitted!", ephemeral=True)
+        await create_ticket_thread(
+            interaction,
+            "Community Report",
+            [
+                ("Reporter", str(interaction.user)),
+                ("Reported User", self.user.value),
+                ("Issue", self.issue.value),
+                ("Proof", self.proof.value)
+            ]
+        )
+        await interaction.response.send_message("✅ Report submitted!", ephemeral=True)
 
 
-# ================= BUTTON VIEW =================
+# ================= BUTTONS =================
 
 class SupportView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="General Help", style=discord.ButtonStyle.primary, emoji="💬")
-    async def general_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def help_btn(self, interaction, button):
         await interaction.response.send_modal(GeneralHelpModal())
 
     @discord.ui.button(label="Report In-Game Member", style=discord.ButtonStyle.success, emoji="🎮")
-    async def ingame(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(InGameReportModal())
+    async def ingame_btn(self, interaction, button):
+        await interaction.response.send_modal(InGameModal())
 
     @discord.ui.button(label="Report Community Member", style=discord.ButtonStyle.danger, emoji="🚨")
-    async def community(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CommunityReportModal())
+    async def community_btn(self, interaction, button):
+        await interaction.response.send_modal(CommunityModal())
 
 
 # ================= COMMAND =================
 
 @bot.command()
-async def heh(ctx):
+async def heh(ctx, staff_role_id: int):
     if ctx.author.id != ALLOWED_USER_ID:
         return
 
+    global STAFF_ROLE_ID
+    STAFF_ROLE_ID = staff_role_id
+
     header = discord.Embed(
         title="Dreamy VR Support System",
-        description="Please use this system to get help safely and efficiently.",
+        description="Use the buttons below to open a ticket.",
         color=discord.Color.blue()
     )
 
@@ -137,5 +154,4 @@ async def heh(ctx):
 
 # ================= RUN =================
 
-token = os.getenv("TOKEN")
-bot.run(token)
+bot.run(os.getenv("TOKEN"))
