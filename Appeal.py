@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+import asyncpg
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -8,34 +9,95 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="?", intents=intents)
 
 ALLOWED_USER_ID = 1429110753683832985
-STAFF_ROLE_ID = None
-ticket_counter = 0
+
+db = None
+
+
+# ================= DATABASE =================
+
+async def init_db():
+    global db
+    db = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
+
+    async with db.acquire() as conn:
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            guild_id BIGINT PRIMARY KEY,
+            staff_role_id BIGINT,
+            ticket_counter INT DEFAULT 0
+        )
+        """)
+
+
+async def get_config(guild_id):
+    async with db.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM config WHERE guild_id=$1", guild_id
+        )
+        return row
+
+
+async def set_staff_role(guild_id, role_id):
+    async with db.acquire() as conn:
+        await conn.execute("""
+        INSERT INTO config (guild_id, staff_role_id, ticket_counter)
+        VALUES ($1, $2, 0)
+        ON CONFLICT (guild_id)
+        DO UPDATE SET staff_role_id=$2
+        """, guild_id, role_id)
+
+
+async def get_next_ticket(guild_id):
+    async with db.acquire() as conn:
+        row = await conn.fetchrow("""
+        UPDATE config
+        SET ticket_counter = ticket_counter + 1
+        WHERE guild_id=$1
+        RETURNING ticket_counter
+        """, guild_id)
+        return row["ticket_counter"]
+
+
+# ================= CLOSE BUTTON =================
+
+class CloseView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.channel.delete()
 
 
 # ================= THREAD CREATION =================
 
-async def create_ticket(interaction, title, data):
-    global ticket_counter
-    ticket_counter += 1
+async def create_ticket(interaction, title, fields):
+    config = await get_config(interaction.guild.id)
 
-    channel = interaction.channel
-    staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not config or not config["staff_role_id"]:
+        await interaction.response.send_message(
+            "❌ Staff role not set. Use ?heh <role_id>",
+            ephemeral=True
+        )
+        return
 
-    thread = await channel.create_thread(
-        name=f"ticket-{ticket_counter}",
+    staff_role = interaction.guild.get_role(config["staff_role_id"])
+    ticket_number = await get_next_ticket(interaction.guild.id)
+
+    thread = await interaction.channel.create_thread(
+        name=f"ticket-{ticket_number}",
         type=discord.ChannelType.private_thread
     )
 
-    # add user
     await thread.add_user(interaction.user)
 
-    # ping staff + user
+    # ping
     await thread.send(f"{staff_role.mention} {interaction.user.mention}")
 
-    # formatted embed (like your screenshot)
+    # embed
     embed = discord.Embed(title=title, color=discord.Color.blue())
 
-    for name, value in data:
+    for name, value in fields:
         embed.add_field(
             name=name,
             value=f"```{value}```",
@@ -44,26 +106,16 @@ async def create_ticket(interaction, title, data):
 
     embed.set_footer(text="Dreamy VR • Support System")
 
-    await thread.send(embed=embed)
+    await thread.send(embed=embed, view=CloseView())
 
 
 # ================= MODALS =================
 
 class GeneralHelpModal(discord.ui.Modal, title="General Help"):
-    issue = discord.ui.TextInput(
-        label="What do you need help with?",
-        placeholder="Explain your issue...",
-        style=discord.TextStyle.paragraph
-    )
+    issue = discord.ui.TextInput(label="What do you need help with?", style=discord.TextStyle.paragraph)
+    details = discord.ui.TextInput(label="Additional Details", required=False, style=discord.TextStyle.paragraph)
 
-    details = discord.ui.TextInput(
-        label="Additional Details",
-        placeholder="Add more info...",
-        style=discord.TextStyle.paragraph,
-        required=False
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         await create_ticket(
             interaction,
             "💬 General Help Ticket",
@@ -76,12 +128,12 @@ class GeneralHelpModal(discord.ui.Modal, title="General Help"):
         await interaction.response.send_message("✅ Ticket created!", ephemeral=True)
 
 
-class InGameReportModal(discord.ui.Modal, title="Report In-Game Member"):
+class InGameModal(discord.ui.Modal, title="Report In-Game Member"):
     username = discord.ui.TextInput(label="Player Username")
     issue = discord.ui.TextInput(label="What happened?", style=discord.TextStyle.paragraph)
-    proof = discord.ui.TextInput(label="Proof", placeholder="Yes/No + details")
+    proof = discord.ui.TextInput(label="Proof")
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         await create_ticket(
             interaction,
             "🎮 In-Game Report",
@@ -95,19 +147,19 @@ class InGameReportModal(discord.ui.Modal, title="Report In-Game Member"):
         await interaction.response.send_message("✅ Report submitted!", ephemeral=True)
 
 
-class CommunityReportModal(discord.ui.Modal, title="Report Community Member"):
-    discord_user = discord.ui.TextInput(label="Discord User")
+class CommunityModal(discord.ui.Modal, title="Report Community Member"):
+    user = discord.ui.TextInput(label="Discord User")
     issue = discord.ui.TextInput(label="Issue", style=discord.TextStyle.paragraph)
     proof = discord.ui.TextInput(label="Proof")
     location = discord.ui.TextInput(label="Did this happen in Discord?")
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         await create_ticket(
             interaction,
             "🚨 Community Report",
             [
                 ("Reporter", str(interaction.user)),
-                ("Reported User", self.discord_user.value),
+                ("Reported User", self.user.value),
                 ("Issue", self.issue.value),
                 ("Proof", self.proof.value),
                 ("Location", self.location.value)
@@ -122,17 +174,17 @@ class SupportView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="General Help", style=discord.ButtonStyle.primary, emoji="💬")
-    async def general_help(self, interaction, button):
+    @discord.ui.button(label="General Help", style=discord.ButtonStyle.primary, emoji="💬", custom_id="help")
+    async def help_btn(self, interaction, button):
         await interaction.response.send_modal(GeneralHelpModal())
 
-    @discord.ui.button(label="Report In-Game Member", style=discord.ButtonStyle.success, emoji="🎮")
-    async def ingame(self, interaction, button):
-        await interaction.response.send_modal(InGameReportModal())
+    @discord.ui.button(label="Report In-Game Member", style=discord.ButtonStyle.success, emoji="🎮", custom_id="ingame")
+    async def ingame_btn(self, interaction, button):
+        await interaction.response.send_modal(InGameModal())
 
-    @discord.ui.button(label="Report Community Member", style=discord.ButtonStyle.danger, emoji="🚨")
-    async def community(self, interaction, button):
-        await interaction.response.send_modal(CommunityReportModal())
+    @discord.ui.button(label="Report Community Member", style=discord.ButtonStyle.danger, emoji="🚨", custom_id="community")
+    async def community_btn(self, interaction, button):
+        await interaction.response.send_modal(CommunityModal())
 
 
 # ================= COMMAND =================
@@ -142,12 +194,11 @@ async def heh(ctx, staff_role_id: int):
     if ctx.author.id != ALLOWED_USER_ID:
         return
 
-    global STAFF_ROLE_ID
-    STAFF_ROLE_ID = staff_role_id
+    await set_staff_role(ctx.guild.id, staff_role_id)
 
     header = discord.Embed(
         title="Dreamy VR Support System",
-        description="Please use this system to get help safely and efficiently.",
+        description="Please use this system to get help safely and efficiently. Staff will assist you as soon as possible.",
         color=discord.Color.blue()
     )
 
@@ -170,10 +221,16 @@ async def heh(ctx, staff_role_id: int):
     await ctx.send(embed=support, view=SupportView())
 
 
+# ================= READY =================
+
+@bot.event
+async def on_ready():
+    await init_db()
+    bot.add_view(SupportView())  # persistent buttons
+    bot.add_view(CloseView())
+    print(f"Logged in as {bot.user}")
+
+
 # ================= RUN =================
 
-token = os.getenv("TOKEN")
-if not token:
-    raise ValueError("No TOKEN found")
-
-bot.run(token)
+bot.run(os.getenv("TOKEN"))
