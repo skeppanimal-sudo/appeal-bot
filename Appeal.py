@@ -87,7 +87,6 @@ class CloseView(discord.ui.View):
                 except:
                     pass
 
-        # clean close message
         await interaction.response.send_message(
             "🔒 **This ticket has been closed and made private.**\n"
             "If you need more help, feel free to open a new ticket.",
@@ -236,31 +235,26 @@ async def heh(ctx, staff_role_id: int):
 
     await set_staff_role(ctx.guild.id, staff_role_id)
 
-    header = discord.Embed(
-        title="Dreamy VR Support System",
-        description="Use this panel to request help, report issues, or contact staff.",
-        color=discord.Color.blue()
-    )
+    # banner embed
+    banner = discord.Embed(color=discord.Color.blue())
+    banner.set_image(url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png")
 
+    # rules embed (matches screenshot)
     rules = discord.Embed(
-        title="📘 Support Rules",
+        title="📘 Support Tickets",
         color=discord.Color.blue()
     )
 
-    rules.add_field(name="1 • Open a Ticket", value="> Use the buttons below to select the correct category.", inline=False)
-    rules.add_field(name="2 • Provide Clear Information", value="> Describe your issue in detail so staff can assist quickly.", inline=False)
-    rules.add_field(name="3 • Be Respectful", value="> Treat staff and other users with respect.", inline=False)
-    rules.add_field(name="4 • No Spam", value="> Do not create multiple tickets for the same issue.", inline=False)
-    rules.add_field(name="5 • Follow Staff Instructions", value="> Cooperate with staff and provide requested information.", inline=False)
-    rules.add_field(name="6 • No Troll Tickets", value="> Fake reports or joke tickets will result in restrictions.", inline=False)
-    rules.add_field(name="7 • Evidence Helps", value="> Include screenshots or clips when reporting someone.", inline=False)
-    rules.add_field(name="8 • Keep It Safe", value="> Do not share personal information.", inline=False)
-    rules.add_field(name="9 • Stay Active", value="> Tickets may be closed if inactive.", inline=False)
-    rules.add_field(name="10 • Abuse of System", value="> Misuse may lead to penalties.", inline=False)
+    rules.add_field(name="1 • Open a Ticket", value="Create a private support channel using the ticket system.", inline=True)
+    rules.add_field(name="2 • Explain Issue", value="Clearly describe your problem so staff can help faster.", inline=True)
+    rules.add_field(name="3 • Stay Respectful", value="Respect staff and others at all times.", inline=True)
+    rules.add_field(name="4 • No Spam", value="Do not open multiple tickets for the same issue.", inline=True)
+    rules.add_field(name="5 • Follow Staff", value="Listen to staff instructions during support.", inline=True)
+    rules.add_field(name="6 • No Troll Tickets", value="Fake or joke tickets will result in punishment.", inline=True)
 
     rules.set_footer(text="Dreamy VR • Support System")
 
-    await ctx.send(embed=header)
+    await ctx.send(embed=banner)
     await ctx.send(embed=rules, view=SupportView())
 
 
