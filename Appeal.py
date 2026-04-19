@@ -9,6 +9,10 @@ bot = commands.Bot(command_prefix="?", intents=intents)
 
 ALLOWED_USER_ID = 1429110753683832985
 
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+
 @bot.command()
 async def heh(ctx):
     if ctx.author.id != ALLOWED_USER_ID:
@@ -74,28 +78,34 @@ async def heh(ctx):
 
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔹 Image Embed (THIRD)
+    # 🔹 Image Embed (padded to match size)
     image_embed = discord.Embed(color=discord.Color.blue())
 
+    # top divider
     image_embed.add_field(
         name="\u200b",
         value="────────────────────────────",
         inline=False
     )
 
+    # padding fields (adjust if needed)
+    for _ in range(6):
+        image_embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+    # image at bottom
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
     )
 
-    # 🔥 Send in correct order
+    # 🔥 Send embeds in order
     await ctx.send(embed=header)
     await ctx.send(embed=support)
     await ctx.send(embed=image_embed)
 
 
-# Railway token
+# 🔐 Railway token
 token = os.getenv("TOKEN")
 if not token:
-    raise ValueError("No TOKEN found")
+    raise ValueError("No TOKEN found in environment variables")
 
 bot.run(token)
