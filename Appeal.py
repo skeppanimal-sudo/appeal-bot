@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -8,26 +9,29 @@ bot = commands.Bot(command_prefix="?", intents=intents)
 
 ALLOWED_USER_ID = 1429110753683832985
 
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+
 @bot.command()
 async def heh(ctx):
     if ctx.author.id != ALLOWED_USER_ID:
         return
 
-    # 🔹 Header Embed (top box)
+    # 🔹 Header Embed
     header = discord.Embed(
         title="Dreamy VR Support System",
         description="Please use this system to get help safely and efficiently. Staff will assist you as soon as possible. Misuse may result in a mute, kick, or ban.",
         color=discord.Color.blue()
     )
 
-    # Divider line
     header.add_field(
         name="\u200b",
         value="────────────────────────────",
         inline=False
     )
 
-    # 🔹 Main Support Embed (fields + image at bottom)
+    # 🔹 Main Support Embed
     support = discord.Embed(color=discord.Color.blue())
 
     support.add_field(
@@ -66,15 +70,15 @@ async def heh(ctx):
         inline=True
     )
 
-    # 👇 Image ALWAYS appears at the bottom
     support.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
     )
 
     support.set_footer(text="Dreamy VR • Support System")
 
-    # Send both embeds
     await ctx.send(embed=header)
     await ctx.send(embed=support)
 
-bot.run("YOUR_BOT_TOKEN")
+
+# 🔐 Get token from Railway environment variable
+bot.run(os.getenv("TOKEN"))
