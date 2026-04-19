@@ -23,7 +23,7 @@ async def heh(ctx):
         color=discord.Color.blue()
     )
 
-    # blue divider inside embed
+    # divider inside header
     header.add_field(
         name="\u200b",
         value=f"[⠀]({DIVIDER})",
@@ -40,7 +40,7 @@ async def heh(ctx):
     support.add_field(name="5 • Follow Staff", value="> Listen to staff instructions during support.", inline=True)
     support.add_field(name="6 • No Troll Tickets", value="> Fake or joke tickets will result in punishment.", inline=True)
 
-    # divider at bottom of rules
+    # second divider (bottom of rules)
     support.add_field(
         name="\u200b",
         value=f"[⠀]({DIVIDER})",
@@ -49,20 +49,10 @@ async def heh(ctx):
 
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔹 Image Embed
+    # 🔹 Image Embed (NO padding = no gap)
     image_embed = discord.Embed(color=discord.Color.blue())
 
-    # padding (to match height)
-    for _ in range(6):
-        image_embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-    # ONLY ONE divider (top of image section)
-    image_embed.add_field(
-        name="\u200b",
-        value=f"[⠀]({DIVIDER})",
-        inline=False
-    )
-
+    # image directly (no fields before it = removes space)
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
     )
