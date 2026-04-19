@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import asyncpg
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -61,12 +62,37 @@ async def get_next_ticket(guild_id):
 # ================= CLOSE BUTTON =================
 
 class CloseView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, ticket_number):
         super().__init__(timeout=None)
+        self.ticket_number = ticket_number
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.channel.delete()
+
+        thread = interaction.channel
+
+        # rename thread
+        await thread.edit(name=f"close-{self.ticket_number}")
+
+        # lock thread
+        await thread.edit(locked=True, archived=False)
+
+        # restrict visibility (remove everyone except staff + opener)
+        config = await get_config(interaction.guild.id)
+        staff_role = interaction.guild.get_role(config["staff_role_id"])
+
+        # remove all users except staff + opener
+        for member in thread.members:
+            if member != interaction.user and staff_role not in member.roles:
+                try:
+                    await thread.remove_user(member)
+                except:
+                    pass
+
+        await interaction.response.send_message(
+            "🔒 Ticket has been closed and made private.",
+            ephemeral=True
+        )
 
 
 # ================= THREAD CREATION =================
@@ -95,7 +121,14 @@ async def create_ticket(interaction, title, fields):
     await thread.send(f"{staff_role.mention} {interaction.user.mention}")
 
     # embed
-    embed = discord.Embed(title=title, color=discord.Color.blue())
+    embed = discord.Embed(
+        title=title,
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
+    )
+
+    embed.add_field(name="Ticket Number", value=f"**#{ticket_number}**", inline=False)
+    embed.add_field(name="User ID", value=str(interaction.user.id), inline=False)
 
     for name, value in fields:
         embed.add_field(
@@ -106,7 +139,9 @@ async def create_ticket(interaction, title, fields):
 
     embed.set_footer(text="Dreamy VR • Support System")
 
-    await thread.send(embed=embed, view=CloseView())
+    await thread.send(embed=embed, view=CloseView(ticket_number))
+
+    await interaction.response.send_message("✅ Ticket created!", ephemeral=True)
 
 
 # ================= MODALS =================
@@ -125,7 +160,6 @@ class GeneralHelpModal(discord.ui.Modal, title="General Help"):
                 ("Details", self.details.value or "None")
             ]
         )
-        await interaction.response.send_message("✅ Ticket created!", ephemeral=True)
 
 
 class InGameModal(discord.ui.Modal, title="Report In-Game Member"):
@@ -144,7 +178,6 @@ class InGameModal(discord.ui.Modal, title="Report In-Game Member"):
                 ("Proof", self.proof.value)
             ]
         )
-        await interaction.response.send_message("✅ Report submitted!", ephemeral=True)
 
 
 class CommunityModal(discord.ui.Modal, title="Report Community Member"):
@@ -165,7 +198,6 @@ class CommunityModal(discord.ui.Modal, title="Report Community Member"):
                 ("Location", self.location.value)
             ]
         )
-        await interaction.response.send_message("✅ Report submitted!", ephemeral=True)
 
 
 # ================= BUTTON VIEW =================
@@ -209,7 +241,7 @@ async def heh(ctx, staff_role_id: int):
     support.add_field(name="3 • Stay Respectful", value="> Respect staff", inline=True)
     support.add_field(name="4 • No Spam", value="> Don't spam tickets", inline=True)
     support.add_field(name="5 • Follow Staff", value="> Follow instructions", inline=True)
-    support.add_field(name="6 • No Troll Tickets", value="> No fake reports", inline=True)
+    support.add.add_field(name="6 • No Troll Tickets", value="> No fake reports", inline=True)
 
     support.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
@@ -226,8 +258,7 @@ async def heh(ctx, staff_role_id: int):
 @bot.event
 async def on_ready():
     await init_db()
-    bot.add_view(SupportView())  # persistent buttons
-    bot.add_view(CloseView())
+    bot.add_view(SupportView())
     print(f"Logged in as {bot.user}")
 
 
