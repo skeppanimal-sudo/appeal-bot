@@ -27,20 +27,7 @@ async def heh(ctx):
         inline=False
     )
 
-    # 🔹 Image Embed (separate)
-    image_embed = discord.Embed(color=discord.Color.blue())
-
-    image_embed.set_image(
-        url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
-    )
-
-    image_embed.add_field(
-        name="\u200b",
-        value="────────────────────────────",
-        inline=False
-    )
-
-    # 🔹 Support Rules Embed (with > style)
+    # 🔹 Support Rules Embed
     support = discord.Embed(color=discord.Color.blue())
 
     support.add_field(
@@ -79,12 +66,31 @@ async def heh(ctx):
         inline=True
     )
 
+    support.add_field(
+        name="\u200b",
+        value="────────────────────────────",
+        inline=False
+    )
+
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔥 Send in order
+    # 🔹 Image Embed (THIRD)
+    image_embed = discord.Embed(color=discord.Color.blue())
+
+    image_embed.add_field(
+        name="\u200b",
+        value="────────────────────────────",
+        inline=False
+    )
+
+    image_embed.set_image(
+        url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
+    )
+
+    # 🔥 Send in correct order
     await ctx.send(embed=header)
-    await ctx.send(embed=image_embed)
     await ctx.send(embed=support)
+    await ctx.send(embed=image_embed)
 
 
 # Railway token
