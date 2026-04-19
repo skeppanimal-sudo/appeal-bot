@@ -29,7 +29,7 @@ async def heh(ctx):
         inline=False
     )
 
-    # 🔹 Rules (NO footer here anymore)
+    # 🔹 Rules
     support = discord.Embed(color=discord.Color.blue())
 
     support.add_field(name="1 • Open a Ticket", value="> Create a private support channel using the ticket system.", inline=True)
@@ -45,17 +45,19 @@ async def heh(ctx):
         inline=False
     )
 
-    # 🔹 Image Embed (ONLY place with footer)
+    # 🔹 Image (perfect balance fix)
     image_embed = discord.Embed(
-        description="\u200b",  # fixes top gap
+        description="\u200b",  # reduces top gap
         color=discord.Color.blue()
     )
+
+    # tiny invisible field (prevents large spacing bug)
+    image_embed.add_field(name="\u200b", value="\u200b", inline=False)
 
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
     )
 
-    # ✅ footer ONLY here
     image_embed.set_footer(text="Dreamy VR • Support System")
 
     # 🔥 Send
