@@ -39,7 +39,6 @@ async def heh(ctx):
     support.add_field(name="5 • Follow Staff", value="> Listen to staff instructions during support.", inline=True)
     support.add_field(name="6 • No Troll Tickets", value="> Fake or joke tickets will result in punishment.", inline=True)
 
-    # divider under rules
     support.add_field(
         name="\u200b",
         value=f"[⠀]({DIVIDER})",
@@ -48,15 +47,8 @@ async def heh(ctx):
 
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔹 Image (CONNECTED properly now)
+    # 🔹 Image (NO fields = NO GAP)
     image_embed = discord.Embed(color=discord.Color.blue())
-
-    # 🔥 THIS FIXES THE GAP FEEL
-    image_embed.add_field(
-        name="\u200b",
-        value=f"[⠀]({DIVIDER})",
-        inline=False
-    )
 
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
