@@ -81,7 +81,6 @@ class CloseView(discord.ui.View):
         config = await get_config(interaction.guild.id)
         staff_role = interaction.guild.get_role(config["staff_role_id"])
 
-        # remove all users except staff + opener
         for member in thread.members:
             if member != interaction.user and staff_role not in member.roles:
                 try:
@@ -129,6 +128,8 @@ async def create_ticket(interaction, title, fields):
 
     embed.add_field(name="Ticket Number", value=f"**#{ticket_number}**", inline=False)
     embed.add_field(name="User ID", value=str(interaction.user.id), inline=False)
+    embed.add_field(name="Opened By", value=str(interaction.user), inline=False)
+    embed.add_field(name="Opened At", value=f"<t:{int(datetime.utcnow().timestamp())}:F>", inline=False)
 
     for name, value in fields:
         embed.add_field(
@@ -241,7 +242,7 @@ async def heh(ctx, staff_role_id: int):
     support.add_field(name="3 • Stay Respectful", value="> Respect staff", inline=True)
     support.add_field(name="4 • No Spam", value="> Don't spam tickets", inline=True)
     support.add_field(name="5 • Follow Staff", value="> Follow instructions", inline=True)
-    support.add.add_field(name="6 • No Troll Tickets", value="> No fake reports", inline=True)
+    support.add_field(name="6 • No Troll Tickets", value="> No fake reports", inline=True)
 
     support.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
