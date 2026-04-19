@@ -65,13 +65,13 @@ class CloseView(discord.ui.View):
         super().__init__(timeout=None)
         self.ticket_number = ticket_number
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
+    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         thread = interaction.channel
 
         # rename thread
-        await thread.edit(name=f"close-{self.ticket_number}")
+        await thread.edit(name=f"closed-{self.ticket_number}")
 
         # lock thread
         await thread.edit(locked=True, archived=False)
@@ -87,8 +87,10 @@ class CloseView(discord.ui.View):
                 except:
                     pass
 
+        # clean close message
         await interaction.response.send_message(
-            "🔒 Ticket has been closed and made private.",
+            "🔒 **This ticket has been closed and made private.**\n"
+            "If you need more help, feel free to open a new ticket.",
             ephemeral=True
         )
 
@@ -108,6 +110,7 @@ async def create_ticket(interaction, title, fields):
     staff_role = interaction.guild.get_role(config["staff_role_id"])
     ticket_number = await get_next_ticket(interaction.guild.id)
 
+    # universal naming
     thread = await interaction.channel.create_thread(
         name=f"ticket-{ticket_number}",
         type=discord.ChannelType.private_thread
@@ -115,16 +118,20 @@ async def create_ticket(interaction, title, fields):
 
     await thread.add_user(interaction.user)
 
-    # ping
-    await thread.send(f"{staff_role.mention} {interaction.user.mention}")
+    # staff notification embed
+    notify = discord.Embed(
+        title="📩 New Ticket Created",
+        description=f"{interaction.user.mention} has opened a ticket.",
+        color=discord.Color.blue()
+    )
+    await thread.send(staff_role.mention, embed=notify)
 
-    # embed (clean version)
+    # main ticket embed
     embed = discord.Embed(
         title=title,
         color=discord.Color.blue()
     )
 
-    # ONLY show modal fields — nothing extra
     for name, value in fields:
         embed.add_field(
             name=name,
@@ -135,6 +142,12 @@ async def create_ticket(interaction, title, fields):
     embed.set_footer(text="Dreamy VR • Support System")
 
     await thread.send(embed=embed, view=CloseView(ticket_number))
+
+    # welcome message
+    await thread.send(
+        "🎟️ **Your ticket has been created!**\n"
+        "A staff member will respond shortly. Feel free to provide more details if needed."
+    )
 
     await interaction.response.send_message("✅ Ticket created!", ephemeral=True)
 
@@ -225,27 +238,30 @@ async def heh(ctx, staff_role_id: int):
 
     header = discord.Embed(
         title="Dreamy VR Support System",
-        description="Please use this system to get help safely and efficiently. Staff will assist you as soon as possible.",
+        description="Use this panel to request help, report issues, or contact staff.",
         color=discord.Color.blue()
     )
 
-    support = discord.Embed(color=discord.Color.blue())
-
-    support.add_field(name="1 • Open a Ticket", value="> Use buttons below", inline=True)
-    support.add_field(name="2 • Explain Issue", value="> Be detailed", inline=True)
-    support.add_field(name="3 • Stay Respectful", value="> Respect staff", inline=True)
-    support.add_field(name="4 • No Spam", value="> Don't spam tickets", inline=True)
-    support.add_field(name="5 • Follow Staff", value="> Follow instructions", inline=True)
-    support.add_field(name="6 • No Troll Tickets", value="> No fake reports", inline=True)
-
-    support.set_image(
-        url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
+    rules = discord.Embed(
+        title="📘 Support Rules",
+        color=discord.Color.blue()
     )
 
-    support.set_footer(text="Dreamy VR • Support System")
+    rules.add_field(name="1 • Open a Ticket", value="> Use the buttons below to select the correct category.", inline=False)
+    rules.add_field(name="2 • Provide Clear Information", value="> Describe your issue in detail so staff can assist quickly.", inline=False)
+    rules.add_field(name="3 • Be Respectful", value="> Treat staff and other users with respect.", inline=False)
+    rules.add_field(name="4 • No Spam", value="> Do not create multiple tickets for the same issue.", inline=False)
+    rules.add_field(name="5 • Follow Staff Instructions", value="> Cooperate with staff and provide requested information.", inline=False)
+    rules.add_field(name="6 • No Troll Tickets", value="> Fake reports or joke tickets will result in restrictions.", inline=False)
+    rules.add_field(name="7 • Evidence Helps", value="> Include screenshots or clips when reporting someone.", inline=False)
+    rules.add_field(name="8 • Keep It Safe", value="> Do not share personal information.", inline=False)
+    rules.add_field(name="9 • Stay Active", value="> Tickets may be closed if inactive.", inline=False)
+    rules.add_field(name="10 • Abuse of System", value="> Misuse may lead to penalties.", inline=False)
+
+    rules.set_footer(text="Dreamy VR • Support System")
 
     await ctx.send(embed=header)
-    await ctx.send(embed=support, view=SupportView())
+    await ctx.send(embed=rules, view=SupportView())
 
 
 # ================= READY =================
