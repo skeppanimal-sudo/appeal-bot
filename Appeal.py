@@ -16,21 +16,20 @@ async def heh(ctx):
     if ctx.author.id != ALLOWED_USER_ID:
         return
 
-    # 🔹 Header Embed
+    # 🔹 Header
     header = discord.Embed(
         title="Dreamy VR Support System",
         description="Please use this system to get help safely and efficiently. Staff will assist you as soon as possible.",
         color=discord.Color.blue()
     )
 
-    # divider inside header
     header.add_field(
         name="\u200b",
         value=f"[⠀]({DIVIDER})",
         inline=False
     )
 
-    # 🔹 Support Rules Embed
+    # 🔹 Rules
     support = discord.Embed(color=discord.Color.blue())
 
     support.add_field(name="1 • Open a Ticket", value="> Create a private support channel using the ticket system.", inline=True)
@@ -40,7 +39,7 @@ async def heh(ctx):
     support.add_field(name="5 • Follow Staff", value="> Listen to staff instructions during support.", inline=True)
     support.add_field(name="6 • No Troll Tickets", value="> Fake or joke tickets will result in punishment.", inline=True)
 
-    # second divider (bottom of rules)
+    # divider under rules
     support.add_field(
         name="\u200b",
         value=f"[⠀]({DIVIDER})",
@@ -49,10 +48,16 @@ async def heh(ctx):
 
     support.set_footer(text="Dreamy VR • Support System")
 
-    # 🔹 Image Embed (NO padding = no gap)
+    # 🔹 Image (CONNECTED properly now)
     image_embed = discord.Embed(color=discord.Color.blue())
 
-    # image directly (no fields before it = removes space)
+    # 🔥 THIS FIXES THE GAP FEEL
+    image_embed.add_field(
+        name="\u200b",
+        value=f"[⠀]({DIVIDER})",
+        inline=False
+    )
+
     image_embed.set_image(
         url="https://cdn.discordapp.com/attachments/1443984687436398698/1495500126582603838/image.png"
     )
@@ -65,7 +70,6 @@ async def heh(ctx):
     await ctx.send(embed=image_embed)
 
 
-# Railway token
 token = os.getenv("TOKEN")
 if not token:
     raise ValueError("No TOKEN found")
